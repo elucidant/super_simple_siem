@@ -1,0 +1,60 @@
+div.alert-data {
+    margin-bottom: 10px;
+}
+
+div.alert-work-log {
+    margin-bottom: 5px;
+    border-color: darkgray;
+    border-style: dotted;
+    padding: 5px;
+    border-width: 2px;
+}
+
+div.alert-work-log td.alert-notes {
+    white-space: pre;
+    min-width: 300px;
+}
+
+div.alert-work-log .alert-action  {
+    width: 100px
+}
+
+div.alert-work-log .alert-analyst  {
+    width: 140px
+}
+
+div.alert-work-log .alert-time  {
+    width: 140px
+}
+
+div.alert-work-log select  {
+    margin-bottom: 2px;
+}
+
+div.alert-work-log input[type=checkbox]  {
+    margin-bottom: 6px;
+}
+
+span.alert-label {
+    width: 55px;
+    display: inline-block;
+}
+
+span.range-label {
+    margin-top: 10px;
+}
+
+table.alert-table {
+    font-size: 12px;
+    line-height: 14px;
+}
+
+table.alert-table.table-condensed tbody th, table.alert-table.table-condensed tbody td {
+    padding: 2px 3px;
+}
+
+div.alert-expanded {
+    padding-left: 3px;
+    border-left: 5px solid #d15e51;
+}
+

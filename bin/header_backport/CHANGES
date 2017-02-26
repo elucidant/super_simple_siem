@@ -1,0 +1,4 @@
+Backport of header.py to run with python 2.7.x.
+The code for header.py and __init__.py was obtained from
+https://github.com/python/cpython/tree/15f44ab043b37c064d6891c7864205fed9fb0dd1/Lib/email
+and modified to run with python 2.7.x. 

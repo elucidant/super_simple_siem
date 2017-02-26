@@ -1,0 +1,94 @@
+[]
+access = read: [ * ], write : [ admin ]
+
+[commands/makealerts]
+access = read : [ * ], write : [ admin ]
+export = system
+owner = nobody
+
+[commands/updatealerts]
+access = read : [ * ], write : [ admin ]
+export = system
+owner = nobody
+
+[commands/deletealerts]
+access = read : [ * ], write : [ admin ]
+export = system
+owner = nobody
+
+[commands/listalerts]
+access = read : [ * ], write : [ admin ]
+export = system
+owner = nobody
+
+[commands/jsontofields]
+access = read : [ * ], write : [ admin ]
+export = system
+owner = nobody
+
+[commands/fieldstojson]
+access = read : [ * ], write : [ admin ]
+export = system
+owner = nobody
+
+[commands/decodeheader]
+access = read : [ * ], write : [ admin ]
+export = system
+owner = nobody
+
+[collections/alerts]
+owner = admin
+access = read : [ * ], write : [ admin, power, user ]
+
+[transforms/alerts]
+access = read : [ * ], write : [ admin, power ]
+export = system
+owner = admin
+
+[searchbnf]
+export = system
+
+[html/alerts]
+owner = admin
+
+[views/reports]
+owner = admin
+
+[views/getting_started]
+owner = admin
+
+[datamodels/alertsmodel]
+access = read : [ * ], write : [ admin, power ]
+export = none
+owner = admin
+
+[models/alertsmodel]
+access = read : [ * ], write : [ admin, power ]
+export = none
+owner = admin
+
+[lookups/analysts.csv]
+access = read : [ * ], write : [ admin, power ]
+export = none
+owner = admin
+
+[transforms/analysts]
+access = read : [ admin, power ], write : [ admin, power ]
+export = none
+owner = admin
+
+[lookups/threats_to_actions.csv]
+access = read : [ * ], write : [ admin, power ]
+export = none
+owner = admin
+
+[transforms/threats_to_actions]
+access = read : [ * ], write : [ admin, power ]
+export = none
+owner = admin
+
+[savedsearches/super_simple_siem_test_alert]
+access = read : [ * ], write : [ admin, power ]
+export = none
+owner = admin
+

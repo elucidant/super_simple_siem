@@ -1,0 +1,11 @@
+Copyright 2016-2017 Jean-Laurent Huynh
+
+This application bundles DataTables 1.10.13 which is available under the MIT
+license.  For details see https://datatables.net/license/.
+
+This application bundles portion of the Splunk SDK for Python 1.6.1 which is
+available under the Apache License Version 2.0.
+
+This application bundles a backport of Python 3 mail/header.py which is
+available under the PYTHON SOFTWARE FOUNDATION LICENSE VERSION 2.
+

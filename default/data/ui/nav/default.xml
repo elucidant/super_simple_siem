@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<nav>
+	<view name="alerts" default="true"/>
+	<view name="reports"/>
+	<view name="getting_started"/>
+</nav>

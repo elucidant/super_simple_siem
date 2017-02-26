@@ -1,0 +1,114 @@
+<dashboard>
+  <label>Reports</label>
+  <row>
+    <panel>
+      <title>Summary</title>
+      <table>
+        <title>Monthly Summary</title>
+        <search>
+          <query>| listalerts | timechart span=1month count by status</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Count by Type and Day</title>
+      <table>
+        <search>
+          <query>| listalerts | timechart limit=0 count by type | sort - _time</query>
+          <earliest>-14d@d</earliest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="count">20</option>
+        <option name="dataOverlayMode">none</option>
+        <option name="drilldown">cell</option>
+        <option name="percentagesRow">false</option>
+        <option name="rowNumbers">false</option>
+        <option name="totalsRow">false</option>
+        <option name="wrap">true</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Alerts Closed By Analysts Yesterday</title>
+      <table>
+        <search>
+          <query>| listalerts status="closed" json=json | jsontofields json=json work_log | mvexpand work_log
+| jsontofields json=work_log prefix=wl_ time, action 
+| eval created=if(wl_action="create",wl_time, 0)
+| eval closed=if(wl_action="close",wl_time, 0)
+| eval first_action=if(wl_action!="create",wl_time, 0)
+| stats max(closed) as closed, max(created) as created, max(first_action) as first_action, first(type) as type, first(entity) as entity, first(analyst) as analyst by kv_key
+| fillnull value=missing analyst
+| eval first_action_duration = (first_action - created)/3600
+| eval close_duration = (closed - created)/3600
+| eval start=relative_time(now(), "-1d@d")
+| eval end=relative_time(now(), "@d")
+| where closed &gt;= start and closed &lt; end
+| stats count as cnt, avg(first_action_duration) as first_action_duration, avg(close_duration) as close_duration by analyst
+| eval first_action_duration=round(first_action_duration,1) | eval close_duration=round(close_duration,1)
+| append [| inputlookup analysts ]
+| stats max(cnt) as count, max(first_action_duration) as first_action_duration, max(close_duration) as close_duration by analyst
+| sort analyst
+| rename first_action_duration as "mean hours to first action", close_duration as "mean hours to close", count as "# alerts closed"
+| table analyst, "# alerts closed", "mean hours to first action", "mean hours to close",</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Daily Alerts By Status</title>
+      <chart>
+        <title>Daily Alerts By Status</title>
+        <search>
+          <query>| listalerts | timechart span=1d count by status</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="charting.chart">area</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Threat and Action Breakdown (last 14 days)</title>
+      <table>
+        <search>
+          <query>
+| listalerts status="closed" json=json | jsontofields json=json work_log | mvexpand work_log
+| jsontofields json=work_log typeprefix=t prefix=wl_ time, action, data
+| search s_wl_action=close
+| dedup kv_key, s_wl_action
+| jsontofields json=j_wl_data typeprefix=t prefix=d_ threat actions
+| search s_d_threat=*
+| mvexpand a_d_actions
+| eval p="{\"a\":" . a_d_actions . "}"
+| jsontofields json=p prefix=a_ 
+| rename s_d_threat as threat, a_a as action
+| bucket span=1d _time
+| stats count by threat, _time, action
+| sort _time, threat, -count, action
+| eval threat_sum=action."=".count
+| stats sum(count) as total, values(threat_sum) as breakdown by _time, threat
+          </query>
+          <earliest>-14d@d</earliest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="count">20</option>
+        <option name="dataOverlayMode">none</option>
+        <option name="drilldown">cell</option>
+        <option name="percentagesRow">false</option>
+        <option name="rowNumbers">false</option>
+        <option name="totalsRow">false</option>
+        <option name="wrap">true</option>
+      </table>
+    </panel>
+  </row>
+</dashboard>

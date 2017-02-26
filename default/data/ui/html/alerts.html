@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<!--
+Copyright 2017 Jean-Laurent Huynh
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <title>Alerts</title>
+    <link rel="shortcut icon" href="/en-US/static/@A8D5798407214605EC3C21084F1C8A6C006104202381B77C59552FC5DEE5664D/img/favicon.ico" />
+    <link rel="stylesheet" type="text/css" href="{{SPLUNKWEB_URL_PREFIX}}/static/build/css/bootstrap-enterprise.css" />
+    <link rel="stylesheet" type="text/css" href="{{SPLUNKWEB_URL_PREFIX}}/static/css/build/pages/dashboard-simple-bootstrap.min.css" />
+
+    <link rel="stylesheet" type="text/css" media="all" href="{{SPLUNKWEB_URL_PREFIX}}/static/app/super_simple_siem/custom.css" />
+    <link rel="stylesheet" type="text/css" href="{{SPLUNKWEB_URL_PREFIX}}/static/app/super_simple_siem/datatables/datatables.css"/>
+
+</head>
+<body class="simplexml preload locale-en" data-splunk-version="6.5.1" data-splunk-product="enterprise">
+<!-- 
+BEGIN LAYOUT
+This section contains the layout for the dashboard. Splunk uses proprietary
+styles in <div> tags, similar to Bootstrap's grid system. 
+-->
+<header>
+    <a class="navSkip" href="#navSkip" tabindex="1">Screen reader users, click here to skip the navigation bar</a>
+    <div class="header splunk-header">
+            <div id="placeholder-splunk-bar">
+                <a href="{{SPLUNKWEB_URL_PREFIX}}/app/launcher/home" class="brand" title="splunk &gt; listen to your data">splunk<strong>&gt;</strong></a>
+            </div>
+            <div id="placeholder-app-bar"></div>
+    </div>
+    <a id="navSkip"></a>
+</header>
+<div class="dashboard-body container-fluid main-section-body" data-role="main">
+    <div class="dashboard-header clearfix">
+        <h2>Alerts</h2>
+    </div>
+
+    <div class="fieldset">
+        <div><span class="alert-label range-label">Range</span><span class="input input-timerangepicker" id="timeinput"></span></div>
+        <div><span class="alert-label">Status</span><span id="statusdropdown"></span></div>
+        <div><span class="alert-label">Type</span><span id="typedropdown"></span></div>
+        <div><span class="alert-label">Severity</span><span id="severitydropdown"></span></div>
+        <div><span class="alert-label">Analyst</span><span id="analystdropdown"></span></div>
+    </div>
+
+    <div id="row2" class="dashboard-row dashboard-row2">
+        <div id="panel2" class="dashboard-cell" style="width: 100%;">
+            <div class="dashboard-panel clearfix">
+                
+                <div class="panel-element-row">
+                    <div id="s3tableview" style="width: 100%">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 
+END LAYOUT
+-->
+
+<script src="{{SPLUNKWEB_URL_PREFIX}}/config?autoload=1"></script>
+<script src="{{SPLUNKWEB_URL_PREFIX}}/static/js/i18n.js"></script>
+<script src="{{SPLUNKWEB_URL_PREFIX}}/i18ncatalog?autoload=1"></script>
+<script src="{{SPLUNKWEB_URL_PREFIX}}/static/build/simplexml/index.js"></script>
+<script type="text/javascript">
+// <![CDATA[
+//
+// LIBRARY REQUIREMENTS
+//
+// In the require function, we include the necessary libraries and modules for
+// the HTML dashboard. Then, we pass variable names for these libraries and
+// modules as function parameters, in order.
+// 
+// When you add libraries or modules, remember to retain this mapping order
+// between the library or module and its function parameter. You can do this by
+// adding to the end of these lists, as shown in the commented examples below.
+
+require([
+    "splunkjs/mvc",
+    "splunkjs/mvc/utils",
+    "splunkjs/mvc/tokenutils",
+    "underscore",
+    "jquery",
+    "splunkjs/mvc/simplexml",
+    "splunkjs/mvc/layoutview",
+    "splunkjs/mvc/simplexml/dashboardview",
+    "splunkjs/mvc/simplexml/dashboard/panelref",
+    "splunkjs/mvc/simplexml/element/chart",
+    "splunkjs/mvc/simplexml/element/event",
+    "splunkjs/mvc/simplexml/element/html",
+    "splunkjs/mvc/simplexml/element/list",
+    "splunkjs/mvc/simplexml/element/map",
+    "splunkjs/mvc/simplexml/element/single",
+    "splunkjs/mvc/simplexml/element/table",
+    "splunkjs/mvc/simplexml/element/visualization",
+    "splunkjs/mvc/simpleform/formutils",
+    "splunkjs/mvc/simplexml/eventhandler",
+    "splunkjs/mvc/simplexml/searcheventhandler",
+    "splunkjs/mvc/simpleform/input/dropdown",
+    "splunkjs/mvc/simpleform/input/radiogroup",
+    "splunkjs/mvc/simpleform/input/linklist",
+    "splunkjs/mvc/simpleform/input/multiselect",
+    "splunkjs/mvc/simpleform/input/checkboxgroup",
+    "splunkjs/mvc/simpleform/input/text",
+    "splunkjs/mvc/simpleform/input/timerange",
+    "splunkjs/mvc/simpleform/input/submit",
+    "splunkjs/mvc/searchmanager",
+    "splunkjs/mvc/savedsearchmanager",
+    "splunkjs/mvc/postprocessmanager",
+    "splunkjs/mvc/simplexml/urltokenmodel",
+    "splunkjs/mvc/multidropdownview",
+    "/static/app/super_simple_siem/s3tableview.js",
+    "/static/app/super_simple_siem/s3multidropdownview.js"
+    ],
+    function(
+        mvc,
+        utils,
+        TokenUtils,
+        _,
+        $,
+        DashboardController,
+        LayoutView,
+        Dashboard,
+        PanelRef,
+        ChartElement,
+        EventElement,
+        HtmlElement,
+        ListElement,
+        MapElement,
+        SingleElement,
+        TableElement,
+        VisualizationElement,
+        FormUtils,
+        EventHandler,
+        SearchEventHandler,
+        DropdownInput,
+        RadioGroupInput,
+        LinkListInput,
+        MultiSelectInput,
+        CheckboxGroupInput,
+        TextInput,
+        TimeRangeInput,
+        SubmitButton,
+        SearchManager,
+        SavedSearchManager,
+        PostProcessManager,
+        UrlTokenModel,
+        MultiDropdownView,
+        S3TableView,
+        S3MultiDropdownView
+        ) {
+
+        var pageLoading = true;
+
+
+        // 
+        // TOKENS
+        //
+        
+        // Create token namespaces
+        var urlTokenModel = new UrlTokenModel();
+        mvc.Components.registerInstance('url', urlTokenModel);
+        var defaultTokenModel = mvc.Components.getInstance('default', {create: true});
+        var submittedTokenModel = mvc.Components.getInstance('submitted', {create: true});
+
+        urlTokenModel.on('url:navigate', function() {
+            defaultTokenModel.set(urlTokenModel.toJSON());
+            if (!_.isEmpty(urlTokenModel.toJSON()) && !_.all(urlTokenModel.toJSON(), _.isUndefined)) {
+                submitTokens();
+            } else {
+                submittedTokenModel.clear();
+            }
+        });
+
+        // Initialize tokens
+        defaultTokenModel.set(urlTokenModel.toJSON());
+
+        // Convert attributes that should be arrays
+        function promoteTokenToArray(tokenName) {
+            var tok = defaultTokenModel.get(tokenName)
+            if (!tok) {
+                defaultTokenModel.set(tokenName, []);
+            } else if (typeof tok === 'string') {
+                defaultTokenModel.set(tokenName, [ tok ]);
+            }
+        }
+        promoteTokenToArray("form.status");
+        promoteTokenToArray("form.type");
+        promoteTokenToArray("form.analyst");
+        promoteTokenToArray("form.severity");
+
+        function submitTokens() {
+            // Copy the contents of the defaultTokenModel to the submittedTokenModel and urlTokenModel
+            FormUtils.submitForm({ replaceState: pageLoading });
+        }
+
+        function setToken(name, value) {
+            defaultTokenModel.set(name, value);
+            submittedTokenModel.set(name, value);
+        }
+
+        function unsetToken(name) {
+            defaultTokenModel.unset(name);
+            submittedTokenModel.unset(name);
+        }
+        
+        //
+        // SEARCH MANAGERS
+        //
+
+		var filterChoicesSearch = new SearchManager({
+			id: "filter-choices",
+			search: "| listalerts | fields status, analyst, type, severity | stats values(*) as \"*\"",
+			preview: true,
+			cache: true
+		});
+
+        //
+        // SPLUNK LAYOUT
+        //
+
+        $('header').remove();
+        new LayoutView({"hideChrome": false, "hideAppBar": false, "hideFooter": false, "hideSplunkBar": false})
+            .render()
+            .getContainerElement()
+            .appendChild($('.dashboard-body')[0]);
+
+        //
+        // DASHBOARD EDITOR
+        //
+
+        new Dashboard({
+            id: 'dashboard',
+            el: $('.dashboard-body'),
+            showTitle: true,
+            editable: true
+        }, {tokens: true}).render();
+
+
+        //
+        // VIEWS: FORM INPUTS
+        //
+
+        // Instantiate components
+		
+        var timeinput = new TimeRangeInput({
+            "id": "timeinput",
+            "searchWhenChanged": false,
+            "default": {"form.latest_time": null, "form.earliest_time": null},
+            "earliest_time": "$form.earliest_time$",
+            "latest_time": "$form.latest_time$",
+            "el": $('#timeinput')
+        }, {tokens: true}).render();
+
+        var statusDropDown = new S3MultiDropdownView({
+            id: "statusdropdown",
+            managerid: "filter-choices",
+            width: 400,
+            default: [ "assigned", "open"],
+            valueField: "status",
+            value: mvc.tokenSafe("$form.status$"),
+            el: $("#statusdropdown")
+        }, {tokens: true}).render();
+
+        var typeDropDown = new S3MultiDropdownView({
+            id:"view-typedropdown",
+            managerid: "filter-choices",
+            valueField: "type",
+            default: [],
+            width: 800,
+            value: mvc.tokenSafe("$form.type$"),
+            el: $("#typedropdown")
+        }, {tokens: true}).render();
+
+        var analystDropDown = new S3MultiDropdownView({
+            id:"view-analystdropdown",
+            managerid: "filter-choices",
+            valueField: "analyst",
+            default: [],
+            width: 800,
+            value: mvc.tokenSafe("$form.analyst$"),
+            el: $("#analystdropdown")
+        }, {tokens: true}).render();
+
+        var severityDropDown = new S3MultiDropdownView({
+            id:"view-severitydropdown",
+            managerid: "filter-choices",
+            labelField: "Severity",
+            valueField: "severity",
+            default: [],
+            width: 800,
+            value: mvc.tokenSafe("$form.severity$"),
+            el: $("#severitydropdown")
+        }, {tokens: true}).render();
+
+        function checkTokens() {
+            console.log("token: form.status", defaultTokenModel.get("form.status"));
+            console.log("token: form.type", defaultTokenModel.get("form.type"));
+            console.log("token: form.analyst", defaultTokenModel.get("form.analyst"));
+            console.log("token: form.severity", defaultTokenModel.get("form.severity"));
+            console.log("token: form.earliest_time", defaultTokenModel.get("form.earliest_time"));
+            console.log("token: form.latest_time", defaultTokenModel.get("form.latest_time"));
+            //console.log(defaultTokenModel);
+        }
+
+		var s3tableview = new S3TableView({
+			id: "s3tableview",
+			el: $("#s3tableview")
+		});
+        s3tableview.filter.set("status", defaultTokenModel.get("form.status"));
+        s3tableview.filter.set("type", defaultTokenModel.get("form.type"));
+        s3tableview.filter.set("analyst", defaultTokenModel.get("form.analyst"));
+        s3tableview.filter.set("severity", defaultTokenModel.get("form.severity"));
+        s3tableview.filter.set("earliest_time", defaultTokenModel.get("form.earliest_time"));
+        s3tableview.filter.set("latest_time", defaultTokenModel.get("form.latest_time"));
+        s3tableview.render();
+
+        defaultTokenModel.on("change:form.status", function() {
+            s3tableview.filter.set("status", defaultTokenModel.get("form.status"));
+            FormUtils.submitForm();
+        });
+        defaultTokenModel.on("change:form.type", function() {
+            s3tableview.filter.set("type", defaultTokenModel.get("form.type"));
+            FormUtils.submitForm();
+        });
+        defaultTokenModel.on("change:form.analyst", function() {
+            s3tableview.filter.set("analyst", defaultTokenModel.get("form.analyst"));
+            FormUtils.submitForm();
+        });
+        defaultTokenModel.on("change:form.severity", function() {
+            s3tableview.filter.set("severity", defaultTokenModel.get("form.severity"));
+            FormUtils.submitForm();
+        });
+
+        timeinput.on("change", function(newValue) {
+            s3tableview.filter.set("earliest_time", defaultTokenModel.get("form.earliest_time"));
+            s3tableview.filter.set("latest_time", defaultTokenModel.get("form.latest_time"));
+            FormUtils.submitForm();
+        });
+
+        //
+        // VIEWS: VISUALIZATION ELEMENTS
+        //
+
+        /*
+                End customization
+        */
+
+
+        // Initialize time tokens to default
+        if (!defaultTokenModel.has("form.status") || defaultTokenModel.get("form.status").length === 0) {
+            defaultTokenModel.set("form.status", ["open", "assigned"]);
+        }
+        submitTokens();
+
+
+        //
+        // DASHBOARD READY
+        //
+
+        DashboardController.ready();
+        pageLoading = false;
+
+    }
+);
+// ]]>
+</script>
+</body>
+</html>

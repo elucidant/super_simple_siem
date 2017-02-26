@@ -1,0 +1,43 @@
+<dashboard>
+  <label>Getting Started</label>
+  <row><panel>
+  <html>
+    <h2>Basics</h2>
+    <div>
+      <p>Alerts are created through the <code>makealerts</code> custom command.</p>
+      <p>Assuming you have a search that output a list of events with <em>_time</em>, <em>type</em>, <em>entity</em> and other fields, you can pipe those to <code>makealerts</code> to create alerts:</p>
+      <pre>
+        | savedsearch mysearch | makealerts
+      </pre>
+      <p>This will insert alerts as records in the <em>alerts</em> kv store. All non-internal fields are saved. If an alert with the same field values already exists, then it will not be inserted.</p>
+      <p>The time, type and entity field names can be specified as arguments. The kv store internal key can also be attached to the event:</p>
+      <pre>
+        | savedsearch mysearch | makealerts time=event_time entity=clientip type=alert_name idfield=kv_key
+      </pre>
+      <p>You can then check alerts on the <a href="alerts">Alerts</a> panel and get reporting metrics on the <a href="reports">Reports</a> panel</p>
+    </div>
+    <h2>Advanced</h2>
+    <div>
+      <p>Batch update of alerts status:</p>
+      <pre>
+        | listalerts | search NOT type="realtime test" | table kv_key
+        | updatealerts key=kv_key action=close status=closed notes="batch close"</pre>
+      <p>Batch replace of alert content to change the type from <em>ioc</em> to <em>ioc1</em>:</p>
+      <pre>
+        | listalerts json=json | search type=ioc
+        | jsontofields json=json prefix=data_ typeprefix=t
+        | eval s_data_type="ioc1"
+        | fieldstojson json=jsonnew prefix=data_
+        | updatealerts json=jsonnew notes="updated manually"</pre>
+      <p>How long it takes to close an alert:</p>
+      <pre>
+        | listalerts status="closed" json=json | jsontofields json=json work_log | mvexpand work_log
+        | jsontofields json=work_log prefix=wl_ time, action  | search wl_action=close OR wl_action=create
+        | stats first(wl_time) as closetime, last(wl_time) as createtime by kv_key | eval hours=(closetime - createtime)/3600
+        | convert ctime(closetime) | convert ctime(createtime)
+        | table kv_key, closetime, createtime, hours</pre>
+    </div>
+  </html>
+  </panel>
+  </row>
+</dashboard>
