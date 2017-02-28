@@ -61,6 +61,7 @@ define([
 
         initialize: function(options) {
             SimpleSplunkView.prototype.initialize.apply(this, [options])
+            this.outputMode = 'json';
             this.threatActionSelectMap = {}
             this.service = mvc.createService({ owner: "nobody" });
             this.filter = new Backbone.Model({
@@ -149,9 +150,18 @@ define([
             }
         },
 
+        formatResults: function(resultsModel) {
+            if (!resultsModel) { return []; }
+            // First try the legacy one, and if it isn't there, use the real one.
+            var outputMode = this.output_mode || this.outputMode;
+            var data_type = this.data_types[outputMode];
+            var data = resultsModel.data();
+            return this.formatData(data[data_type]);
+        },
+
         formatExpandedRow: function(rowData) {
             //console.log('rowData', rowData);
-            var alert = JSON.parse(rowData[6]);
+            var alert = JSON.parse(rowData['data']);
             //console.log('alert', alert);
             var dataHtml =  _.template(
                 '<div class="alert-data"><h5>Data</h5> \
@@ -250,7 +260,7 @@ define([
         // Override this method to put the Splunk data into the view
         updateView: function(viz, data) {
             // Print the data object to the console
-            //console.log("The data object: ", data);
+            // console.log("The data object: ", data);
             
             function renderData(data, type, row, meta) {
                 var alert = JSON.parse(data);
@@ -263,14 +273,15 @@ define([
                 search: { smart: false },
                 columns: [
                     { className: "details-control", orderable: false, data: null, defaultContent: '<i class="icon-triangle-right-small"></i>' },
-                    { title: "Time", width: "160px", data: 0 },
-                    { title: "Type", width: "160px", data: 1 },
-                    { title: "Severity", data: 2 },
-                    { title: "Entity", data: 3 },
-                    { title: "Status", data: 4 },
-                    { title: "Analyst", defaultContent: "", data: 5 },
-                    { title: "Data (json)", data: 6, render: renderData  }
-                ]
+                    { title: "Time", width: "160px", data: '_time' },
+                    { title: "Type", width: "160px", data: 'type' },
+                    { title: "Severity", data: 'severity', defaultContent: "" },
+                    { title: "Entity", data: 'entity', defaultContent: "" },
+                    { title: "Status", data: 'status' },
+                    { title: "Analyst", defaultContent: "", data: 'analyst' },
+                    { title: "Data (json)", data: 'data', render: renderData  }
+                ],
+                order: [[1, "desc"]]
             });
             this.table = table;
 
@@ -306,7 +317,7 @@ define([
                 } else {
                     // Open this row
                     var data = row.data();
-                    var key = data[7];
+                    var key = data['kv_key'];
                     row.child(that.formatExpandedRow(data)).show();
                     var threatActionSelectId = "threat-action-" + key;
                     var threatActionSelect;
