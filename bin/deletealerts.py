@@ -25,35 +25,24 @@ from alert_collection import AlertCollection
 @Configuration()
 class DeleteAlertsCommand(StreamingCommand):
 
-    json = Option(
+    key = Option(
         doc='''
-        **Syntax:** **json=***<field>*
-        **Description:** Field name that contains the alert as a json string''',
+        **Syntax:** **key=***<field>*
+        **Description:** The internal key of the alert''',
         require=True, validate=validators.Fieldname())
-
-    notes = Option(
-        doc='''
-        **Syntax:** **notes=***<string>*
-        **Description:** Optional notes to be added to the work log''',
-        require=False)
 
     alerts = None
 
     def stream(self, records):
         self.logger.info('DeleteAlertsCommand: %s', self)  # logs command line
-        #self.logger.info('SEARCHINFO %s', self._metadata.searchinfo)
         if not self.alerts:
             self.alerts = AlertCollection(self._metadata.searchinfo.session_key)
 
         for record in records:
-            if self.json in record:
-                self.alerts.delete(json.loads(record[self.json]),
-                    notes = self.notes,
-                    logger=self.logger,
-                    sid=self._metadata.searchinfo.sid,
-                    username=self._metadata.searchinfo.username)
+            if self.key in record:
+                self.alerts.delete(record[self.key], logger=self.logger)
             else:
-                self.logger.error('DeleteAlertsCommand: no json field %s', str(self.json))  # logs command line
+                self.logger.error('DeleteAlertsCommand: no key field %s', str(self.json))  # logs command line
             yield record
 
 dispatch(DeleteAlertsCommand, sys.argv, sys.stdin, sys.stdout, __name__)

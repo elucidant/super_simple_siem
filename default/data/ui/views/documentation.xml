@@ -1,0 +1,36 @@
+<dashboard>
+  <label>Documentation</label>
+  <row><panel>
+  <html>
+    <h2>makealerts</h2>
+    <a name="makealerts"></a>
+    <div>
+      <p><code>makealerts</code> creates alerts from piped events. Syntax:</p>
+      <pre>makealerts time=<em>fieldname</em> entity=<em>fieldname</em> type=<em>string</em> severity=<em>fieldname</em> idfield=<em>fieldname</em>
+    combine=<em>"comma separated fieldnames"</em> combine_window=<em>duration_spec</em></pre>
+      <p>This will insert alerts as records in the <em>alerts</em> kv store. All non-internal fields are saved. If an alert with same event time and the same field values already exists, then it will not be inserted.</p>
+      <ul>
+        <li>time is optional and defaults to the _time field</li>
+        <li>entity is optional and defaults to the entity field</li>
+        <li>type is a required string</li>
+        <li>severity is an optional field name</li>
+        <li>idfield is an optional field that will received the auto generated key from the alert kv insert operation</li>
+        <li>combine and combine_window are optional fields to prevent multiple
+        alerts by combining subsequent alerts with identical values for some
+        fields within a time window:
+            <ul>
+                <li>combine is a list of comma separated field names enclosed in double quotes</li>
+                <li>combine_window is a string to indicate a number of hours or
+                days with the following format number[d|h] such as 1d or
+                12h</li>
+            </ul>
+        </li>
+      </ul>
+      <p>Examples:</p>
+      <pre>... | makealerts time=_time entity=user type="My Type"
+... | makealerts time=_time entity=user type="My Type" combine="host,user,clientip,destip" combine_window=24h</pre>
+    </div>
+  </html>
+  </panel>
+  </row>
+</dashboard>

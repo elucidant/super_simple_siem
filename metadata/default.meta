@@ -57,6 +57,9 @@ owner = admin
 [views/getting_started]
 owner = admin
 
+[views/documentation]
+owner = admin
+
 [datamodels/alertsmodel]
 access = read : [ * ], write : [ admin, power ]
 export = none
@@ -86,6 +89,11 @@ owner = admin
 access = read : [ * ], write : [ admin, power ]
 export = none
 owner = admin
+
+[macros/alerts_work_stats]
+access = read : [ * ], write : [ admin, power ]
+export = system
+owner = nobody
 
 [savedsearches/super_simple_siem_test_alert]
 access = read : [ * ], write : [ admin, power ]

@@ -158,20 +158,9 @@ class AlertCollection:
         else:
             logger.warning('Cannot find alert: %s', str(key))
 
-    def delete(self, alert_record, notes=None, logger=None, sid=None, username=None):
-        key = alert_record.get("_key")
+    def delete(self, key, logger=None):
         if key:
-            existing_record = self.coll.data.query_by_id(key)
-            existing_record['status'] = 'deleted'
-            if notes:
-                existing_record['work_log'].insert(0, {
-                        'time': time.time(),
-                        'action': 'delete',
-                        'notes': notes,
-                        'data': {'sid': sid},
-                        'analyst': username
-                    })
-            self.coll.data.update(key, json.dumps(existing_record))
+            self.coll.data.delete_by_id(key)
         else:
             logger.warning('Cannot find alert: %s', str(key))
 
