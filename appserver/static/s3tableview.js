@@ -56,6 +56,7 @@ define([
         options: {
             data: "results",
             analysts: [],
+            severities: [],
             threatsToActions: {}
         },
 
@@ -101,6 +102,20 @@ define([
                 );
                 this.settings.set("threatsToActions", threatsToActions);
             }, this);
+
+            this.severityDropDownSearchResults = new SearchManager({
+                id: "severity-search",
+                preview: false,
+                cache: false,
+                search: "| inputlookup severities"
+            }).data('results');
+            this.severityDropDownSearchResults.on("data", function() {
+                var severities = _.map(this.severityDropDownSearchResults.data().rows, function(row) {
+                    return row[0];
+                });
+                this.settings.set("severities", severities);
+            }, this);
+
 
             // create manager before we set managerid so that the component can properly
             // configure the manager (uses Splunk view binding machinery)
@@ -181,6 +196,7 @@ define([
             });
 
             var analysts = this.settings.get("analysts");
+            var severities = this.settings.get("severities");
             var threats = Object.keys(this.settings.get("threatsToActions")).sort();
             var username = Splunk.util.getConfigValue("USERNAME");
             var table = this.table;
@@ -209,6 +225,19 @@ define([
                         <% }); %> \
                         </select> \
                     <button class="btn btn-primary submit" data-id="<%- alert._key %>" data-action="assign">Assign</button> \
+                </div> \
+                <div> \
+                        <select id="severity-<%- alert._key %>" data-id="<%- alert._key %>" data-action="change-severity-enabler" data-severity="<%- alert.severity %>"> \
+                            <option value="">(no severity)</option> \
+                        <% _.each(severities, function(a) { %> \
+                            <% if (a === alert.severity) { %> \
+                                <option value="<%- a %>" selected="true"><%- a %></option> \
+                            <% } else { %> \
+                                <option value="<%- a %>"><%- a %></option> \
+                            <% } %> \
+                        <% }); %> \
+                        </select> \
+                    <button class="btn btn-primary submit" data-id="<%- alert._key %>" data-action="change-severity" disabled=true>Change Severity</button> \
                 </div> \
                 <div> \
                         <select id="threat-<%- alert._key %>" data-id="<%- alert._key %>" data-action="threat"> \
@@ -248,6 +277,7 @@ define([
                 {
                     alert: alert,
                     analysts: analysts,
+                    severities: severities,
                     threats: threats,
                     username: username,
                     recordsDisplay: recordsDisplay
@@ -275,7 +305,13 @@ define([
                     { className: "details-control", orderable: false, data: null, defaultContent: '<i class="icon-triangle-right-small"></i>' },
                     { title: "Time", width: "160px", data: '_time' },
                     { title: "Type", width: "160px", data: 'type' },
-                    { title: "Severity", data: 'severity', defaultContent: "" },
+                    {
+                        title: "Severity", data: 'severity',
+                        render: function(data, type, row) {
+                            if (data && data !== '') return '<span class="severity severity-' + data + '">' + data + '</span>';
+                            else return "";
+                        }
+                    },
                     { title: "Entity", data: 'entity', defaultContent: "" },
                     { title: "Status", data: 'status' },
                     { title: "Analyst", defaultContent: "", data: 'analyst' },
@@ -368,7 +404,28 @@ define([
                     analyst = null;
                     status = 'open';
                 }
-                that.updateAlerts(keys, status, analyst, entry, function(errs, responses) {
+                that.updateAlerts(keys, status, analyst, undefined, entry, function(errs, responses) {
+                    if (errs.length > 0) console.log('There were errors in updateAlerts', errs);
+                    if (responses.length > 0) manager.startSearch();
+                });
+            });
+
+            table.on('click', "[data-action='change-severity']", function(el) {
+                var key = $(el.currentTarget).attr('data-id');
+                var severity = $('#severity-' + key).val();
+                var original = $('#severity-' + key).attr("data-severity");
+                var notes = $('#notes-' + key).val();
+                var applyAll = $('#apply-all-' + key).prop('checked');
+                var username = Splunk.util.getConfigValue("USERNAME");
+                var keys = that.keysFromApplyAll(key);
+                var entry = {
+                    time: new Date().getTime()/1000,
+                    action: 'change-severity',
+                    notes: notes || username + ' changed severity from ' + original + ' to ' + severity,
+                    data: {},
+                    analyst: username
+                };
+                that.updateAlerts(keys, undefined, undefined, severity, entry, function(errs, responses) {
                     if (errs.length > 0) console.log('There were errors in updateAlerts', errs);
                     if (responses.length > 0) manager.startSearch();
                 });
@@ -388,7 +445,7 @@ define([
                     data: {threat: threat, actions: actionSelect.val()},
                     analyst: username
                 };
-                that.updateAlerts(keys, 'closed', username, entry, function(errs, responses) {
+                that.updateAlerts(keys, 'closed', username, undefined, entry, function(errs, responses) {
                     if (errs.length > 0) console.log('There were errors in updateAlerts', errs);
                     if (responses.length > 0) manager.startSearch();
                 });
@@ -406,7 +463,7 @@ define([
                     data: {},
                     analyst: username
                 };
-                that.updateAlerts(keys, undefined, undefined, entry, function(errs, responses) {
+                that.updateAlerts(keys, undefined, undefined, undefined, entry, function(errs, responses) {
                     if (errs.length > 0) console.log('There were errors in updateAlerts', errs);
                     if (responses.length > 0) manager.startSearch();
                 });
@@ -424,7 +481,7 @@ define([
                     data: {},
                     analyst: username
                 };
-                that.updateAlerts(keys, 'open', username, entry, function(errs, responses) {
+                that.updateAlerts(keys, 'open', username, undefined, entry, function(errs, responses) {
                     if (errs.length > 0) console.log('There were errors in updateAlerts', errs);
                     if (responses.length > 0) manager.startSearch();
                 });
@@ -442,11 +499,17 @@ define([
             table.on('keyup', "[data-action='notes-enabler']", function(el) {
                 var $text = $(el.currentTarget);
                 var key = $text.attr('data-id');
-                if ($text.val().trim().length > 0) {
-                    $('button[data-action=notes][data-id=' + key + ']').prop('disabled', false);
-                } else {
-                    $('button[data-action=notes][data-id=' + key + ']').prop('disabled', true);
-                }
+                $('button[data-action=notes][data-id=' + key + ']')
+                    .prop('disabled', $text.val().trim().length <= 0);
+            });
+
+            // enable Change Severity button if it is changed
+            table.on('change', "[data-action='change-severity-enabler']", function(el) {
+                var $select = $(el.currentTarget);
+                var key = $select.attr('data-id');
+                var original = $select.attr('data-severity');
+                $('button[data-action=change-severity][data-id=' + key + ']')
+                    .prop('disabled', $select.val() === original);
             });
 
             // change actions drop down based on threat
@@ -475,7 +538,7 @@ define([
             var keys = [];
             if (applyAll) {
                 this.table.rows({search: 'applied'}).every(function(idx) {
-                    keys.push(this.data()[6]);
+                    keys.push(this.data()['kv_key']);
                 });
             } else {
                 keys.push(key);
@@ -484,7 +547,7 @@ define([
         },
 
         // Update multiple alerts (requires as many round trips as there are alerts to update
-        updateAlerts: function(keys, status, username, entry, onComplete) {
+        updateAlerts: function(keys, status, username, severity, entry, onComplete) {
             var completedCount = 0;
             var responses = [];
             var errs = [];
@@ -498,12 +561,12 @@ define([
                 }
             }
             $.each(keys, function(key) {
-                that.updateAlert(this, status, username, entry, updateCompletedCount);
+                that.updateAlert(this, status, username, severity, entry, updateCompletedCount);
             });
         },
 
         // Update a single alert
-        updateAlert: function(key, status, username, entry, onComplete) {
+        updateAlert: function(key, status, username, severity, entry, onComplete) {
             var that = this;
             this.service.request(
                 "storage/collections/data/alerts/" + key,
@@ -521,6 +584,9 @@ define([
                         }
                         if (typeof username !== "undefined") {
                             record.analyst = username;
+                        }
+                        if (typeof severity !== "undefined") {
+                            record.severity = severity;
                         }
                         that.service.request(
                             "storage/collections/data/alerts/" + key,

@@ -11,7 +11,7 @@ div.alert-work-log {
 }
 
 div.alert-work-log td.alert-notes {
-    white-space: pre;
+    white-space: pre-wrap;
     min-width: 300px;
 }
 
@@ -58,3 +58,22 @@ div.alert-expanded {
     border-left: 5px solid #d15e51;
 }
 
+span.severity {
+    border: 1px solid transparent;
+    border-radius: 4px;
+    font-weight: 400;
+    text-align: center;
+    padding: 2px 2px;
+}
+
+span.severity-critical {
+    color: #fff;
+    background-color: #c9302c;
+    border-color: #c9302c;
+}
+
+span.severity-high {
+    color: #fff;
+    background-color: #ec971f;
+    border-color: #ec971f;
+}

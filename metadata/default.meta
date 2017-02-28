@@ -45,9 +45,6 @@ access = read : [ * ], write : [ admin, power ]
 export = system
 owner = admin
 
-[searchbnf]
-export = system
-
 [html/alerts]
 owner = admin
 
@@ -89,6 +86,19 @@ owner = admin
 access = read : [ * ], write : [ admin, power ]
 export = none
 owner = admin
+
+[lookups/severities.csv]
+access = read : [ * ], write : [ admin, power ]
+export = none
+owner = admin
+
+[transforms/severities]
+access = read : [ * ], write : [ admin, power ]
+export = none
+owner = admin
+
+[searchbnf]
+export = system
 
 [macros/alerts_work_stats]
 access = read : [ * ], write : [ admin, power ]
