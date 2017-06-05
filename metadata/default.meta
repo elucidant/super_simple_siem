@@ -110,3 +110,9 @@ access = read : [ * ], write : [ admin, power ]
 export = none
 owner = admin
 
+[]
+access = read : [ * ], write : [ admin, mssp, power ]
+export = none
+version = 6.5.0
+modtime = 1495211591.260310000
+
