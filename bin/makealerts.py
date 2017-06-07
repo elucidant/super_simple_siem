@@ -59,6 +59,12 @@ class MakeAlertsCommand(StreamingCommand):
         **Syntax:** **combine_window=***<string>*
         **Description:** hours or days. ''',
         require=False, default=None)
+    interactive = Option(
+        doc='''
+        **Syntax:** **interactive=***<bool>*
+        **Description:** If true, makealerts can run in an interactive search, otherwise it will run only in scheduled search
+        (this is to prevent alerts created accidentally when copy and pasting scheduled search text)''',
+        require=False, default=False, validate=validators.Boolean())
 
     alerts = None
 
@@ -66,11 +72,18 @@ class MakeAlertsCommand(StreamingCommand):
         super(MakeAlertsCommand, self).__init__()
         self.insert_stats = InsertStats()
 
+    def is_scheduled(self):
+        sid = self._metadata.searchinfo.sid
+        return sid.startswith("scheduler_") or sid.startswith("rt_scheduler_")
 
     def stream(self, records):
         #self.logger.info('MakeAlertsCommand: %s, type of record %s', self, type(records))  # logs command line
-        #self.logger.info('SEARCHINFO %s', self._metadata.searchinfo)
-        is_scheduled = self._metadata.searchinfo.sid.startswith("scheduler_")
+        self.logger.info('SEARCHINFO %s', self._metadata.searchinfo)
+        sid = self._metadata.searchinfo.sid
+
+        if not self.interactive and not self.is_scheduled():
+            raise RuntimeError("When testing makealerts from interactive search, provide the 'interative=t' option.")
+
         if not self.alerts:
             self.alerts = AlertCollection(self._metadata.searchinfo.session_key)
 
@@ -87,13 +100,21 @@ class MakeAlertsCommand(StreamingCommand):
                 search_earliest=self._metadata.searchinfo.earliest_time,
                 search_latest=self._metadata.searchinfo.latest_time,
                 logger=self.logger,
-                sid=self._metadata.searchinfo.sid,
+                sid=sid,
                 username=self._metadata.searchinfo.username,
                 insert_stats=self.insert_stats)
             yield record
 
     def finish(self):
-        self.logger.info('calling finish: %s', str(self.insert_stats))
+        if self.interactive and (not self.is_scheduled()) and self.insert_stats.errors > 0:
+           self.write_error(
+               "There were {0} error(s) when trying to insert data, check logs with this search 'index=_internal MakeAlertsCommand source=*super_simple_siem.log WARNING'",
+               self.insert_stats.errors)
+
+        # only log stats when running from a scheduled search
+        if self.is_scheduled():
+            self.logger.info('finish: %s', str(self.insert_stats))
+
         try:
             super(MakeAlertsCommand, self).finish()
         except:
