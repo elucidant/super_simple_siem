@@ -39,12 +39,27 @@ class AlertCollection:
         return re.sub('[.$]', '', field_name)
 
 
-    def insert(self, record, event_time='_time', entity='entity', alert_type='type',
+    # insert the record or combine with an existing record (if combine and combine_window allow it).
+    #   combining is based on type, entity, time and data subject to combine and combine_window constraints.
+    #   when combining, the main alert data is preserved, additional information is added to the work log.
+    # do no insert duplicate records (same type, entity, time and data).
+    # if logger is provided, log duplicate records for troubleshooting.
+    # if insert_stats is provided, tabulate counts of insert status
+    def insert(self, record,
+            event_time='_time',
+            entity='entity',
+            alert_type='type',
             severity=None,
             idfield=None,
-            combine=None, combine_window=None,
-            logger=None, sid=None, username=None):
+            combine=None,
+            combine_window=None,
+            search_query=None,
+            search_earliest=None,
+            search_latest=None,
+            logger=None, sid=None, username=None, insert_stats=None):
         import re
+        if insert_stats is None:
+            insert_stats = InsertStats()
         if event_time in record and entity in record:
             alert_data = {self.fix_field_name(key): value for key, value in record.iteritems() if key[0] != '_'}
             alert_record = { 'data': alert_data }
@@ -56,6 +71,9 @@ class AlertCollection:
                 alert_record['severity'] = record[severity]
             alert_record['analyst'] = None
             alert_record['sid'] = sid
+            alert_record['search_query'] = search_query
+            alert_record['search_earliest'] = search_earliest
+            alert_record['search_latest'] = search_latest
             alert_record['work_log'] = [ {
                 'time': time.time(),
                 'action': 'create',
@@ -84,6 +102,7 @@ class AlertCollection:
                     existing = candidates2[0]
                     if existing['data'] == alert_record['data']:
                         record[idfield] = existing['_key']
+                        insert_stats.duplicate += 1
                         if logger:
                             logger.info('DUPLICATE alert_record: %s', alert_record)
                     else:
@@ -96,8 +115,10 @@ class AlertCollection:
                                 'analyst': username
                             })
                         self.coll.data.update(existing['_key'], json.dumps(existing))
+                        insert_stats.merged += 1
                 else:
                     alert_id = self.coll.data.insert(json.dumps(alert_record))
+                    insert_stats.inserted += 1
                     if idfield:
                         record[idfield] = alert_id['_key']
             else:
@@ -107,17 +128,20 @@ class AlertCollection:
                 ]
                 if not same_existing_alerts:
                     alert_id = self.coll.data.insert(json.dumps(alert_record))
+                    insert_stats.inserted += 1
                     if idfield:
                         record[idfield] = alert_id['_key']
                 else:
                     if idfield:
                         record[idfield] = same_existing_alerts[0]['_key']
+                    insert_stats.duplicate += 1
                     if logger:
                         logger.info('DUPLICATE alert_record: %s', alert_record)
         else:
             if logger:
                 missing = set([event_time, entity, alert_type]) - set(record.keys())
                 logger.warning('Missing fields in record: %s', missing)
+                insert_stats.errors += 1
 
     # CSV file with a single json column with the json as exported by | listalerts json=json
     def csv_import(self, file_of_json_inside_csv):
@@ -238,3 +262,11 @@ def main():
 if __name__ == "__main__":
     main()
 
+class InsertStats:
+    def __init__(self):
+        self.inserted = 0
+        self.duplicate = 0
+        self.merged = 0
+        self.errors = 0
+    def __str__(self):
+        return 'inserted=%d, duplicate=%d, merged=%d, errors=%d' % (self.inserted, self.duplicate, self.merged, self.errors)

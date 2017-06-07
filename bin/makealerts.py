@@ -20,7 +20,7 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 from splunklib.searchcommands import dispatch, StreamingCommand, Configuration, Option, validators
 import sys, json
 from splunklib.client import connect
-from alert_collection import AlertCollection
+from alert_collection import AlertCollection, InsertStats
 
 @Configuration()
 class MakeAlertsCommand(StreamingCommand):
@@ -62,22 +62,43 @@ class MakeAlertsCommand(StreamingCommand):
 
     alerts = None
 
+    def __init__(self):
+        super(MakeAlertsCommand, self).__init__()
+        self.insert_stats = InsertStats()
+
+
     def stream(self, records):
-        self.logger.info('MakeAlertsCommand: %s', self)  # logs command line
+        #self.logger.info('MakeAlertsCommand: %s, type of record %s', self, type(records))  # logs command line
         #self.logger.info('SEARCHINFO %s', self._metadata.searchinfo)
+        is_scheduled = self._metadata.searchinfo.sid.startswith("scheduler_")
         if not self.alerts:
             self.alerts = AlertCollection(self._metadata.searchinfo.session_key)
 
         for record in records:
-            self.alerts.insert(record, event_time=self.time, entity=self.entity,
+            self.alerts.insert(record,
+                event_time=self.time,
+                entity=self.entity,
                 alert_type=self.alert_type,
                 severity=self.severity,
                 idfield=self.idfield,
-                combine=self.combine, combine_window=self.combine_window,
+                combine=self.combine,
+                combine_window=self.combine_window,
+                search_query=self._metadata.searchinfo.search,
+                search_earliest=self._metadata.searchinfo.earliest_time,
+                search_latest=self._metadata.searchinfo.latest_time,
                 logger=self.logger,
                 sid=self._metadata.searchinfo.sid,
-                username=self._metadata.searchinfo.username)
+                username=self._metadata.searchinfo.username,
+                insert_stats=self.insert_stats)
             yield record
 
+    def finish(self):
+        self.logger.info('calling finish: %s', str(self.insert_stats))
+        try:
+            super(MakeAlertsCommand, self).finish()
+        except:
+            pass
+
 dispatch(MakeAlertsCommand, sys.argv, sys.stdin, sys.stdout, __name__)
+
 
