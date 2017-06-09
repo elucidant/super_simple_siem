@@ -182,13 +182,25 @@ define([
                 '<div class="alert-data"><h5>Data</h5> \
                 <table class="table table-condensed table-embed table-expanded table-dotted"> \
                 <tbody> \
-                <% for (f in data) { %> \
-                    <tr><td class="field-key"><%- f %></td><td class="field-value"><%- data[f] %></td></tr> \
+                <% for (f in alert.data) { %> \
+                    <tr><td class="field-key"><%- f %></td><td class="field-value"><%- alert.data[f] %></td></tr> \
+                <% } %> \
+                <% if ("search_query" in alert) { \
+                    var query = alert.search_query.replace(/\\s*\\|\\s*makealerts.*/,""); \
+                %> \
+                    <tr><td class="field-key">search query</td><td class="field-value"><a href="../search/search?q=<%- encodeURIComponent(query) %>&earliest=<%- alert.search_earliest %>&latest=<%- alert.search_latest %>" target="_blank"><%- query %></a></td></tr> \
+                    <!-- <tr><td class="field-key">search earliest</td><td class="field-value"><%- alert.search_earliest %></td></tr> \
+                    <tr><td class="field-key">search latest</td><td class="field-value"><%- alert.search_latest %></td></tr> --> \
+                <% } %> \
+                <% if ("sid" in alert && alert.sid.includes("scheduler")) { \
+                    var query = "index=_internal sourcetype=scheduler sid=" + alert.sid + " | head 1 | table saved*" \
+                %> \
+                    <tr><td class="field-key">splunk search sid</td><td class="field-value"><a href="../search/search?q=<%- encodeURIComponent(query) %>" target="_blank"><%- alert.sid %></a></td></tr> \
                 <% } %> \
                 </tbody> \
                 </table> \
                 </div>',
-                { data: alert.data }
+                { alert: alert }
             );
 
             _.each(alert.work_log, function(entry) {
