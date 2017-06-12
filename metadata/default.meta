@@ -72,6 +72,11 @@ access = read : [ * ], write : [ admin, power ]
 export = none
 owner = admin
 
+[lookups/whitelist.csv]
+access = read : [ * ], write : [ admin, power ]
+export = none
+owner = admin
+
 [transforms/analysts]
 access = read : [ admin, power ], write : [ admin, power ]
 export = none
@@ -93,6 +98,11 @@ export = none
 owner = admin
 
 [transforms/severities]
+access = read : [ * ], write : [ admin, power ]
+export = none
+owner = admin
+
+[transforms/whitelist]
 access = read : [ * ], write : [ admin, power ]
 export = none
 owner = admin

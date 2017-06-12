@@ -1,0 +1,2 @@
+name,type,description,reason,start,end,criteria,stakeholder
+login whitelist test,login,Testing whitelisting,False Positive,2017-06-12,2017-07-12,"user == ""admin""",admin
