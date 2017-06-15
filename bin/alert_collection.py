@@ -89,7 +89,8 @@ class AlertCollection:
                 elif days:
                     delta_seconds = int(days.group(1)) * 3600 * 24
                 else:
-                    if logger: logger.error("Cannot parse " + combine_window + ", default to 24 hours")
+                    if logger:
+                        logger.error("sid=%s,message=\"Cannot parse combine_window %s, default to 24h\"", sid, combine_window)
                     delta_seconds = 3600 * 24
                 cutoff = alert_record['time'] - delta_seconds
                 fields = combine.split(",")
@@ -140,7 +141,7 @@ class AlertCollection:
         else:
             if logger:
                 missing = set([event_time, entity, alert_type]) - set(record.keys())
-                logger.warning('Missing fields in record: %s', missing)
+                logger.error('sid=%s,message="Missing fields in record: %s"', sid, missing)
                 insert_stats.errors += 1
 
     # CSV file with a single json column with the json as exported by | listalerts json=json
@@ -165,7 +166,7 @@ class AlertCollection:
                     })
             self.coll.data.update(key, json.dumps(alert_record))
         else:
-            logger.warning('Cannot find alert: %s', str(key))
+            logger.error('sid=%s,message="Cannot find alert: %s"', sid, str(key))
 
     def update(self, key, action, status, notes=None, logger=None, sid=None, username=None):
         if key:
@@ -180,13 +181,13 @@ class AlertCollection:
                 })
             self.coll.data.update(key, json.dumps(alert_record))
         else:
-            logger.warning('Cannot find alert: %s', str(key))
+            logger.error('sid=%s,message="Cannot find alert: %s"', sid, str(key))
 
     def delete(self, key, logger=None):
         if key:
             self.coll.data.delete_by_id(key)
         else:
-            logger.warning('Cannot find alert: %s', str(key))
+            logger.error('sid=%s,message="Cannot find alert: %s"', sid, str(key))
 
     def find(self, type, entity, time_gte):
         """Find records for the type, entity and time (int)."""
@@ -268,5 +269,7 @@ class InsertStats:
         self.duplicate = 0
         self.merged = 0
         self.errors = 0
+        self.whitelisted = 0
     def __str__(self):
-        return 'inserted=%d, duplicate=%d, merged=%d, errors=%d' % (self.inserted, self.duplicate, self.merged, self.errors)
+        return 'inserted=%d,duplicate=%d,merged=%d,errors=%d,whitelisted=%d' % (
+        self.inserted, self.duplicate, self.merged, self.errors, self.whitelisted)

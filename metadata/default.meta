@@ -57,6 +57,9 @@ owner = admin
 [views/documentation]
 owner = admin
 
+[views/health_stats]
+owner = admin
+
 [datamodels/alertsmodel]
 access = read : [ * ], write : [ admin, power ]
 export = none
@@ -74,8 +77,8 @@ owner = admin
 
 [lookups/whitelist.csv]
 access = read : [ * ], write : [ admin, power ]
-export = none
-owner = admin
+export = system
+owner = nobody
 
 [transforms/analysts]
 access = read : [ admin, power ], write : [ admin, power ]
@@ -104,8 +107,8 @@ owner = admin
 
 [transforms/whitelist]
 access = read : [ * ], write : [ admin, power ]
-export = none
-owner = admin
+export = system
+owner = nobody
 
 [searchbnf]
 export = system
