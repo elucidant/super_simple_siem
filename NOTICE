@@ -9,3 +9,6 @@ available under the Apache License Version 2.0.
 This application bundles a backport of Python 3 mail/header.py which is
 available under the PYTHON SOFTWARE FOUNDATION LICENSE VERSION 2.
 
+This application bundles a https://github.com/sighingnow/parsec.py/ whi is
+available under the MIT License.
+
