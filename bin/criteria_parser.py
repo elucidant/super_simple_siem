@@ -37,22 +37,44 @@ class FieldExpr(Expr):
         return indent + "record['%s']" % self.field
 
 class MatchExpr(Expr):
+    import re
+    cidr_pat = re.compile(r'^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})$')
+    ip_pat = re.compile(r'^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$')
     def __init__(self, functionName, patternExpr, stringExpr):
         self.functionName = functionName
         self.patternExpr = patternExpr
         self.stringExpr = stringExpr
+    def match_to_ip(self, m):
+        return ((int(m.group(1)) << 24) | (int(m.group(2)) << 16) | (int(m.group(3)) << 8) | int(m.group(4)))
     def evaluate(self, context):
-        import re
         pattern = self.patternExpr.evaluate(context)
         s = self.stringExpr.evaluate(context)
         if self.functionName == 'search':
             match_obj = re.search(pattern, s)
+            context.debug.append("%s(%s, %s) => %s" % (self.functionName, pattern, s, str(match_obj)))
+            return match_obj is not None
         elif self.functionName == 'match':
             match_obj = re.match(pattern, s)
+            context.debug.append("%s(%s, %s) => %s" % (self.functionName, pattern, s, str(match_obj)))
+            return match_obj is not None
+        elif self.functionName == 'cidrmatch':
+            m = self.cidr_pat.match(pattern.strip())
+            if not m:
+                raise RuntimeError('invalid cidr: %s' % pattern)
+            else:
+                cidr_ip_int = self.match_to_ip(m)
+                mask_count = int(m.group(5))
+                mask = ((1 << mask_count) - 1) << (32 - mask_count)
+                m1 = self.ip_pat.match(s.strip())
+                if not m1:
+                    raise RuntimeError('invalid ip: %s' % s)
+                else:
+                    ip_int = self.match_to_ip(m1)
+                    result = (ip_int & mask) == (cidr_ip_int & mask)
+                    context.debug.append("%s(%s, %s) => %s" % (self.functionName, pattern, s, str(result)))
+                    return result
         else:
             raise RuntimeError('invalid function name: %s' % self.functionName)
-        context.debug.append("%s(%s, %s) => %s" % (self.functionName, pattern, s, str(match_obj)))
-        return match_obj is not None
     def __str__(self):
         return "MatchExpr(%s,  %s, %s)" % (self.functionName, self.patternExpr, self.stringExpr)
     def ast(self, indent = ""):
@@ -127,7 +149,9 @@ class CriteriaParser:
         raw_shortstring_single = (string("r'") >> many(raw_shortstringitem_single)) << string("'")
         raw_shortstringitem_double = shortstringchar_double | raw_escapeseq
         raw_shortstring_double = (string('r"') >> many(raw_shortstringitem_double)) << string('"')
-        self.raw_shortstring = (raw_shortstring_single ^ raw_shortstring_double).parsecmap(lambda arr: LiteralExpr(''.join(arr)))
+        self.raw_shortstring = (raw_shortstring_single ^ raw_shortstring_double).parsecmap(
+            lambda arr: LiteralExpr(''.join(arr))
+        )
 
         self.literal = self.raw_shortstring ^ self.number ^ self.shortstring
 
@@ -135,7 +159,7 @@ class CriteriaParser:
 
         self.term = self.lexeme(self.literal ^ self.fieldname)
 
-        function_name = self.lexeme(string('search')) ^ self.lexeme(string('match'))
+        function_name = self.lexeme(string('search') ^ string('match') ^ string('cidrmatch'))
         function_call_args = separated(self.term, self.lexeme(string(',')), mint=2, maxt=2, end=None)
         self.function_call = ((function_name << self.lexeme(string('(')))
                 + (function_call_args << self.lexeme(string(')')))).parsecmap(
@@ -160,7 +184,9 @@ class CriteriaParser:
         op_le = ((self.term << self.lexeme(string("<="))) + self.term).parsecmap(
             lambda t: ComparisonExpr(t[0], t[1], "<=", lambda x, y: x <= y)
         )
-        self.comparison.fn = op_equal ^ op_not_equal ^ op_ge ^ op_le ^ op_gt ^ op_lt ^ self.paren_comparison ^ self.function_call
+        self.comparison.fn = (
+            op_equal ^ op_not_equal ^ op_ge ^ op_le ^ op_gt ^ op_lt ^ self.paren_comparison ^ self.function_call
+        )
 
         self.conjunction = ((self.comparison << self.lexeme(string("and"))) + self.comparison).parsecmap(
             lambda t: ComparisonExpr(t[0], t[1], "and", lambda x, y: x and y)
@@ -261,6 +287,12 @@ def main():
     cp.test_eval(r'r"192\.168" == "192\\.168"', {}, True)
     cp.test_eval(r'match(r"192\.168\.\d+\.\d+", clientip)', {'clientip': "192.168.1.1"}, True)
     cp.test_eval(r'match(r"10\.10\.\d+\.\d+", clientip)', {'clientip': "192.168.1.1"}, False)
+    cp.test_eval('cidrmatch("192.168.1.1/32", clientip)', {'clientip': "192.168.1.1"}, True)
+    cp.test_eval('cidrmatch("192.168.1.1/32", clientip)', {'clientip': "192.168.1.2"}, False)
+    cp.test_eval('cidrmatch("192.168.1.1/31", clientip)', {'clientip': "192.168.1.1"}, True)
+    cp.test_eval('cidrmatch("192.168.1.1/0", clientip)', {'clientip': "1.2.3.4"}, True)
+    cp.test_eval('cidrmatch("10.0.0.0/8", clientip)', {'clientip': "10.10.20.30"}, True)
+    cp.test_eval('cidrmatch("10.0.0.0/8", clientip)', {'clientip': "11.10.20.30"}, False)
 
 if __name__ == "__main__":
     main()

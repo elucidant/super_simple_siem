@@ -33,7 +33,9 @@ class Whitelist:
     #   expression: expression 'and' expression
     #   expression: expression 'or' expression
     #   expression: fieldname operator literal
-    #   expression: fieldname 'matches' regular_expression
+    #   expression: match(regex_pattern, fieldname) (returns boolean)
+    #   expression: search(regex_pattern, fieldname) (returns boolean)
+    #   expression: cidrmatch(cidr_string, fieldname) (returns boolean)
     #   fieldname: a string without space
     #   operator: '==' | '!=' | '>=' | '<=' | '>' | '<'
     #   literal: literal_string, literal_number
@@ -102,8 +104,8 @@ class MakeAlertsCommand(StreamingCommand):
     interactive = Option(
         doc='''
         **Syntax:** **interactive=***<bool>*
-        **Description:** If true, makealerts can run in an interactive search, otherwise it will run only in scheduled search
-        (this is to prevent alerts created accidentally when copy and pasting scheduled search text)''',
+        **Description:** If true, makealerts can run in an interactive search, otherwise it will run only in scheduled
+        search (this is to prevent alerts created accidentally when copy and pasting scheduled search text)''',
         require=False, default=False, validate=validators.Boolean())
 
     alerts = None
@@ -131,9 +133,8 @@ class MakeAlertsCommand(StreamingCommand):
                             wl.parse_criteria()
                             self.whitelist.append(wl)
                     except Exception as e:
-                        self.logger.error(
-                        "sid=%s,s3tag=whitelist,type=\"invalid whitelist\",message=\"%s\",record=%s", searchinfo.sid,
-                        str(e), str(result))
+                        self.logger.error("sid=%s,s3tag=whitelist,type=\"invalid whitelist\",message=\"%s\",record=%s",
+                            searchinfo.sid, str(e), str(result))
 
 
     def is_scheduled(self):
@@ -158,8 +159,10 @@ class MakeAlertsCommand(StreamingCommand):
                 context = Context(record)
                 if wl.is_whitelisted(context):
                     self.insert_stats.whitelisted += 1
-                    self.logger.info("sid=%s,s3tag=criteria,debug=\"%s\"", self._metadata.searchinfo.sid, str(context.debug))
-                    self.logger.info("sid=%s,s3tag=whitelisted,type=\"%s\",name=\"%s\"", self._metadata.searchinfo.sid, wl.type, wl.name)
+                    self.logger.info("sid=%s,s3tag=criteria,debug=\"%s\"",
+                        self._metadata.searchinfo.sid, str(context.debug))
+                    self.logger.info("sid=%s,s3tag=whitelisted,type=\"%s\",name=\"%s\"",
+                        self._metadata.searchinfo.sid, wl.type, wl.name)
                     break
             else:
                 self.alerts.insert(record,
