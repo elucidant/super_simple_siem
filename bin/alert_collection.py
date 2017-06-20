@@ -21,6 +21,21 @@ import sys, json
 from splunklib.client import connect
 from utils import parse
 import time
+import logging
+
+# This is used to pass information to log things in context as well as report messages.
+class SearchContext:
+
+    def __init__(self, searchinfo, logger):
+        self.searchinfo = searchinfo or {
+            'sid': None,
+            'search': None,
+            'earliest_time': None,
+            'latest_time': None
+        }
+        self.logger = logger or logging.getLogger('SearchContext').addHandler(logging.NullHandler())
+        self.messages = []
+
 
 class AlertCollection:
     app_name = 'super_simple_siem'
@@ -53,14 +68,16 @@ class AlertCollection:
             idfield=None,
             combine=None,
             combine_window=None,
-            search_query=None,
-            search_earliest=None,
-            search_latest=None,
-            logger=None, sid=None, username=None, insert_stats=None):
+            preview=False,
+            search_context=None,
+            insert_stats=None):
         import re
+        logger = search_context.logger
         if insert_stats is None:
             insert_stats = InsertStats()
         if event_time in record and entity in record:
+            sid = search_context.searchinfo.sid
+
             alert_data = {self.fix_field_name(key): value for key, value in record.iteritems() if key[0] != '_'}
             alert_record = { 'data': alert_data }
             alert_record['time'] = float(record[event_time])
@@ -71,15 +88,15 @@ class AlertCollection:
                 alert_record['severity'] = record[severity]
             alert_record['analyst'] = None
             alert_record['sid'] = sid
-            alert_record['search_query'] = search_query
-            alert_record['search_earliest'] = search_earliest
-            alert_record['search_latest'] = search_latest
+            alert_record['search_query'] = search_context.searchinfo.search
+            alert_record['search_earliest'] = search_context.searchinfo.earliest_time
+            alert_record['search_latest'] =search_context.searchinfo.latest_time
             alert_record['work_log'] = [ {
                 'time': time.time(),
                 'action': 'create',
                 'notes': None,
                 'data': {},
-                'analyst': username
+                'analyst': search_context.searchinfo.username
             } ]
             if combine and combine_window:
                 hours = re.match(r'(\d+)(hours?|h)', combine_window)
@@ -89,8 +106,7 @@ class AlertCollection:
                 elif days:
                     delta_seconds = int(days.group(1)) * 3600 * 24
                 else:
-                    if logger:
-                        logger.error("sid=%s,message=\"Cannot parse combine_window %s, default to 24h\"", sid, combine_window)
+                    logger.error("message=\"Cannot parse combine_window %s, default to 24h\"", combine_window)
                     delta_seconds = 3600 * 24
                 cutoff = alert_record['time'] - delta_seconds
                 fields = combine.split(",")
@@ -104,8 +120,8 @@ class AlertCollection:
                     if existing['data'] == alert_record['data']:
                         record[idfield] = existing['_key']
                         insert_stats.duplicate += 1
-                        if logger:
-                            logger.info('DUPLICATE alert_record: %s', alert_record)
+                        search_context.messages.append('alert not created, duplicate of %s' % existing['_key'])
+                        logger.info('DUPLICATE alert_record: %s', alert_record)
                     else:
                         alert_data['sid'] = sid
                         existing['work_log'].insert(0, {
@@ -115,34 +131,41 @@ class AlertCollection:
                                 'data': alert_data,
                                 'analyst': username
                             })
-                        self.coll.data.update(existing['_key'], json.dumps(existing))
+                        if not preview:
+                            self.coll.data.update(existing['_key'], json.dumps(existing))
+                        search_context.messages.append('alert %s would be updated' % existing['_key'])
                         insert_stats.merged += 1
                 else:
-                    alert_id = self.coll.data.insert(json.dumps(alert_record))
+                    if not preview:
+                        alert_id = self.coll.data.insert(json.dumps(alert_record))
+                        if idfield:
+                            record[idfield] = alert_id['_key']
                     insert_stats.inserted += 1
-                    if idfield:
-                        record[idfield] = alert_id['_key']
+                    search_context.messages.append('alert would be inserted')
             else:
                 same_existing_alerts = [ a for a
                     in self.find(alert_record['type'], alert_record['entity'], alert_record['time'])
                     if a['data'] == alert_record['data']
                 ]
                 if not same_existing_alerts:
-                    alert_id = self.coll.data.insert(json.dumps(alert_record))
+                    if not preview:
+                        alert_id = self.coll.data.insert(json.dumps(alert_record))
+                        if idfield:
+                            record[idfield] = alert_id['_key']
+                    search_context.messages.append('alert would be inserted')
                     insert_stats.inserted += 1
-                    if idfield:
-                        record[idfield] = alert_id['_key']
                 else:
                     if idfield:
                         record[idfield] = same_existing_alerts[0]['_key']
+                    search_context.messages.append(
+                        'alert not created, duplicate of %s' % same_existing_alerts[0]['_key'])
                     insert_stats.duplicate += 1
-                    if logger:
-                        logger.info('DUPLICATE alert_record: %s', alert_record)
+                    logger.info('DUPLICATE alert_record: %s', alert_record)
         else:
-            if logger:
-                missing = set([event_time, entity, alert_type]) - set(record.keys())
-                logger.error('sid=%s,message="Missing fields in record: %s"', sid, missing)
-                insert_stats.errors += 1
+            missing = set([event_time, entity, alert_type]) - set(record.keys())
+            search_context.messages.append('alert not inserted, missing fields %s' % str(missing))
+            logger.error('message="Missing fields in record: %s"', missing)
+            insert_stats.errors += 1
 
     # CSV file with a single json column with the json as exported by | listalerts json=json
     def csv_import(self, file_of_json_inside_csv):
@@ -166,7 +189,7 @@ class AlertCollection:
                     })
             self.coll.data.update(key, json.dumps(alert_record))
         else:
-            logger.error('sid=%s,message="Cannot find alert: %s"', sid, str(key))
+            logger.error('message="Cannot find alert: %s"', str(key))
 
     def update(self, key, action, status, notes=None, logger=None, sid=None, username=None):
         if key:

@@ -21,9 +21,15 @@ from splunklib.searchcommands import dispatch, StreamingCommand, Configuration, 
 import sys, json
 from splunklib.client import connect
 from splunklib import results
-from alert_collection import AlertCollection, InsertStats
+from alert_collection import AlertCollection, SearchContext, InsertStats
 from criteria_parser import CriteriaParser, Context
 import datetime
+import logging
+
+class CustomLogAdapter(logging.LoggerAdapter):
+    def process(self, msg, kwargs):
+        #return 'sid=%s,type="%s",%s' % (self.extra['sid'], self.extra['type'], msg), kwargs
+        return 'sid=%s,type=%s,%s' % (self.extra['sid'], self.extra['type'], msg), kwargs
 
 class Whitelist:
     # assume we have the following fields:
@@ -107,6 +113,12 @@ class MakeAlertsCommand(StreamingCommand):
         **Description:** If true, makealerts can run in an interactive search, otherwise it will run only in scheduled
         search (this is to prevent alerts created accidentally when copy and pasting scheduled search text)''',
         require=False, default=False, validate=validators.Boolean())
+    preview = Option(
+        doc='''
+        **Syntax:** **preview=***<bool>*
+        **Description:** If true, makealerts does not create alerts but instead indicates what it would do in the
+        preview field''',
+        require=False, default=False, validate=validators.Boolean())
 
     alerts = None
 
@@ -115,6 +127,7 @@ class MakeAlertsCommand(StreamingCommand):
         self.insert_stats = InsertStats()
         self.whitelist = []
         self.whitelist_loaded = False
+        self.loggerExtra = self.logger
 
     def load_whitelist(self, searchinfo):
         if not self.whitelist_loaded:
@@ -136,7 +149,6 @@ class MakeAlertsCommand(StreamingCommand):
                         self.logger.error("sid=%s,s3tag=whitelist,type=\"invalid whitelist\",message=\"%s\",record=%s",
                             searchinfo.sid, str(e), str(result))
 
-
     def is_scheduled(self):
         sid = self._metadata.searchinfo.sid
         return sid.startswith("scheduler_") or sid.startswith("rt_scheduler_")
@@ -147,6 +159,7 @@ class MakeAlertsCommand(StreamingCommand):
 
         self.load_whitelist(self._metadata.searchinfo)
         sid = self._metadata.searchinfo.sid
+        self.loggerExtra = CustomLogAdapter(self.logger, {'sid': sid, 'type': self.alert_type})
 
         if not self.interactive and not self.is_scheduled():
             raise RuntimeError("When testing makealerts from interactive search, provide the 'interative=t' option.")
@@ -159,12 +172,13 @@ class MakeAlertsCommand(StreamingCommand):
                 context = Context(record)
                 if wl.is_whitelisted(context):
                     self.insert_stats.whitelisted += 1
-                    self.logger.info("sid=%s,s3tag=criteria,debug=\"%s\"",
-                        self._metadata.searchinfo.sid, str(context.debug))
-                    self.logger.info("sid=%s,s3tag=whitelisted,type=\"%s\",name=\"%s\"",
-                        self._metadata.searchinfo.sid, wl.type, wl.name)
+                    self.loggerExtra.info("s3tag=criteria,evaluation=\"%s\"", str(context.debug))
+                    self.loggerExtra.info("s3tag=whitelisted,name=\"%s\"", wl.name)
+                    if self.preview:
+                        record['preview'] = 'whitelisted %s' % str(context.debug)
                     break
             else:
+                search_context = SearchContext(self._metadata.searchinfo, self.loggerExtra)
                 self.alerts.insert(record,
                     event_time=self.time,
                     entity=self.entity,
@@ -173,13 +187,11 @@ class MakeAlertsCommand(StreamingCommand):
                     idfield=self.idfield,
                     combine=self.combine,
                     combine_window=self.combine_window,
-                    search_query=self._metadata.searchinfo.search,
-                    search_earliest=self._metadata.searchinfo.earliest_time,
-                    search_latest=self._metadata.searchinfo.latest_time,
-                    logger=self.logger,
-                    sid=sid,
-                    username=self._metadata.searchinfo.username,
+                    preview=self.preview,
+                    search_context=search_context,
                     insert_stats=self.insert_stats)
+                if self.preview:
+                    record['preview'] = str(search_context.messages)
             yield record
 
     def finish(self):
@@ -188,10 +200,10 @@ class MakeAlertsCommand(StreamingCommand):
                "There were {0} error(s) when trying to insert data, check logs with this search 'index=_internal MakeAlertsCommand source=*super_simple_siem.log* ERROR'",
                self.insert_stats.errors)
 
-        self.logger.info('sid=%s,s3tag=stats,%s,whitelist=%s',
-            self._metadata.searchinfo.sid,
-            str(self.insert_stats),
-            "[" + ";".join(str(x) for x in self.whitelist) + "]")
+        if not self.preview:
+            self.loggerExtra.info('s3tag=stats,%s,whitelist=%s',
+                str(self.insert_stats),
+                "[" + ";".join(str(x) for x in self.whitelist) + "]")
 
         try:
             super(MakeAlertsCommand, self).finish()
