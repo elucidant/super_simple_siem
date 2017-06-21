@@ -192,7 +192,7 @@ define([
                     <!-- <tr><td class="field-key">search earliest</td><td class="field-value"><%- alert.search_earliest %></td></tr> \
                     <tr><td class="field-key">search latest</td><td class="field-value"><%- alert.search_latest %></td></tr> --> \
                 <% } %> \
-                <% if ("sid" in alert && alert.sid.includes("scheduler")) { \
+                <% if ("sid" in alert && alert.sid.indexOf("scheduler") != -1) { \
                     var query = "index=_internal sourcetype=scheduler sid=" + alert.sid + " | head 1 | table saved*" \
                 %> \
                     <tr><td class="field-key">splunk search sid</td><td class="field-value"><a href="../search/search?q=<%- encodeURIComponent(query) %>" target="_blank"><%- alert.sid %></a></td></tr> \
