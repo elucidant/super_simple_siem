@@ -15,10 +15,11 @@
       <table>
         <title>Alert Creation Summary</title>
         <search>
-          <query>index=_internal sourcetype="super_simple_siem*" MakeAlertsCommand s3tag=stats | stats count, dc(sid) as sids, sum(whitelisted), sum(inserted), sum(errors), sum(merged) by type | rename sum(*) as *</query>
+          <query>index=_internal source=*super_simple_siem.log* MakeAlertsCommand s3tag=stats | stats count, dc(sid) as sids, sum(whitelisted), sum(inserted), sum(errors), sum(merged) by type | rename sum(*) as *</query>
           <earliest>$top_timepicker.earliest$</earliest>
           <latest>$top_timepicker.latest$</latest>
         </search>
+        <option name="count">20</option>
       </table>
       <table>
         <title>Top Whitelisting Rules</title>
@@ -31,7 +32,7 @@
       <table>
         <title>Whitelist Errors</title>
         <search>
-          <query>index=_internal sourcetype="super_simple_siem*" MakeAlertsCommand  Level=ERROR | stats count as error_count, first(_raw) as most_recent_error by record | rename record as whitelist_row | sort - error_count</query>
+          <query>index=_internal source=*super_simple_siem.log* MakeAlertsCommand  Level=ERROR | stats count as error_count, first(_raw) as most_recent_error by record | rename record as whitelist_row | sort - error_count</query>
           <earliest>$top_timepicker.earliest$</earliest>
           <latest>$top_timepicker.latest$</latest>
         </search>
