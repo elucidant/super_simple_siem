@@ -34,20 +34,6 @@ class CustomLogAdapter(logging.LoggerAdapter):
 class Whitelist:
     # assume we have the following fields:
     # start and end (in YYYY-MM-DD format): only apply alert if current date is between start and end
-    # criteria (a boolean expression that will the following syntax):
-    #   expression: '(' expression ')'
-    #   expression: expression 'and' expression
-    #   expression: expression 'or' expression
-    #   expression: fieldname operator literal
-    #   expression: match(regex_pattern, fieldname) (returns boolean)
-    #   expression: search(regex_pattern, fieldname) (returns boolean)
-    #   expression: cidrmatch(cidr_string, fieldname) (returns boolean)
-    #   fieldname: a string without space
-    #   operator: '==' | '!=' | '>=' | '<=' | '>' | '<'
-    #   literal: literal_string, literal_number
-    #   literal_string: python-style string literal
-    #   literal_number: python-style number literal
-    #   regular_expression: python-style string literal
     def __init__(self, row):
         self.row = row
         self.name = row['name']

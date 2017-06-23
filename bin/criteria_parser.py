@@ -22,19 +22,20 @@ class LiteralExpr(Expr):
         return indent + str(self.value)
 
 class FieldExpr(Expr):
-    def __init__(self, field):
-        self.field = field
+    def __init__(self, fieldExpr):
+        self.fieldExpr = fieldExpr
     def evaluate(self, context):
-        if self.field in context.record:
-            context.debug.append("record['%s'] => %s" % (self.field, context.record[self.field]))
-            return context.record[self.field]
+        field = self.fieldExpr.evaluate(context)
+        if field in context.record:
+            context.debug.append("record['%s'] => %s" % (field, context.record[field]))
+            return context.record[field]
         else:
-            context.debug.append("record['%s'] => None" % self.field)
+            context.debug.append("record['%s'] => None" % field)
             return None
     def __str__(self):
-        return "FieldExpr(" + self.field + ")"
+        return "FieldExpr(" + str(self.fieldExpr) + ")"
     def ast(self, indent = ""):
-        return indent + "record['%s']" % self.field
+        return indent + "record['%s']" % str(self.fieldExpr)
 
 class MatchExpr(Expr):
     import re
@@ -114,6 +115,23 @@ class ComparisonExpr(Expr):
             + indent + ")"
         )
 
+# criteria (a boolean expression that will the following syntax):
+#   expression: '(' expression ')'
+#   expression: expression 'and' expression
+#   expression: expression 'or' expression
+#   expression: term operator term
+#   term: fieldname | literal | expression
+#   expression: match(regex_pattern, fieldname) (returns boolean)
+#   expression: search(regex_pattern, fieldname) (returns boolean)
+#   expression: cidrmatch(cidr_string, fieldname) (returns boolean)
+#   fieldname: a string without space | get(literal_string)
+#   operator: '==' | '!=' | '>=' | '<=' | '>' | '<'
+#   literal: literal_string, literal_number, literal_array, literal_set
+#   literal_string: python-style string literal
+#   literal_number: python-style number literal
+#   regular_expression: python-style string literal
+#   literal_array: python style array literals
+#   literal_set: set(literal_array)
 class CriteriaParser:
 
     def __init__(self):
@@ -155,9 +173,14 @@ class CriteriaParser:
 
         self.literal = self.raw_shortstring ^ self.number ^ self.shortstring
 
-        self.fieldname = regex("[A-Z_a-z][0-9A-Za-z_-]*").parsecmap(lambda s: FieldExpr(s))
+        self.fieldname = regex("[A-Z_a-z][0-9A-Za-z_-]*").parsecmap(lambda s: FieldExpr(LiteralExpr(s)))
+        self.fieldgetter = (
+            self.lexeme(string('get')) >> self.lexeme(string('('))
+            >> self.lexeme(self.literal)
+            << self.lexeme(string(')'))
+        ).parsecmap(lambda literalExpr: FieldExpr(literalExpr))
 
-        self.term = self.lexeme(self.literal ^ self.fieldname)
+        self.term = self.lexeme(self.literal ^ self.fieldgetter ^ self.fieldname)
 
         function_name = self.lexeme(string('search') ^ string('match') ^ string('cidrmatch'))
         function_call_args = separated(self.term, self.lexeme(string(',')), mint=2, maxt=2, end=None)
@@ -263,6 +286,8 @@ def main():
     cp.test(cp.function_call, 'search("pattern", "foo")')
     cp.test_eval('user == "admin"', {'user': "admin"}, True)
     cp.test_eval('user == "admin1"', {'user': "admin"}, False)
+    cp.test_eval('get("user") == "admin"', {'user': "admin"}, True)
+    cp.test_eval('get("field with spaces") == "admin"', {'field with spaces': "admin"}, True)
     cp.test_eval('count > 10', {'count': "15"}, True)
     cp.test_eval('count > 10', {'count': "5"}, False)
     cp.test_eval('count >= 10', {'count': "10"}, True)
