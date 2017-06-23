@@ -21,6 +21,38 @@ class LiteralExpr(Expr):
     def ast(self, indent = ""):
         return indent + str(self.value)
 
+class ArrayExpr(Expr):
+    def __init__(self, elementExprs):
+        self.elementExprs = elementExprs
+    def evaluate(self, context):
+        return [expr.evaluate(context) for expr in self.elementExprs]
+    def __str__(self):
+        return "ArrayExpr([" + ', '.join(map(lambda e: str(e), self.elementExprs)) + "])"
+    def ast(self, indent = ""):
+        inner_indent = indent + "  "
+        return (
+            indent + "[\n"
+            + ''.join(map(lambda e: inner_indent + e.ast(inner_indent) + "\n", self.elementExprs)) + "\n"
+            + indent + "]"
+        )
+
+class SetExpr(Expr):
+    def __init__(self, expr):
+        self.expr = expr
+    def evaluate(self, context):
+        arr = self.expr.evaluate(context)
+        # must evaluate to an array
+        return set(arr)
+    def __str__(self):
+        return "SetExpr(" + str(self.expr) + ")"
+    def ast(self, indent = ""):
+        inner_indent = indent + "  "
+        return (
+            indent + "set(\n"
+            + self.expr.ast(inner_indent) + "\n"
+            + indent + ")"
+        )
+
 class FieldExpr(Expr):
     def __init__(self, fieldExpr):
         self.fieldExpr = fieldExpr
@@ -142,6 +174,7 @@ class CriteriaParser:
         # setup mutually referencing parsers as dummy parser where the fn parameter is replaced afterwards
         self.paren_comparison = Parser(lambda x: x)
         self.comparison = Parser(lambda x: x)
+        self.term = Parser(lambda x: x)
 
         number_int = self.lexeme(regex(r'\d+')).parsecmap(lambda s: LiteralExpr(int(s)))
         number_float = self.lexeme(regex(r'\d+\.\d+')).parsecmap(lambda s: LiteralExpr(float(s)))
@@ -180,7 +213,18 @@ class CriteriaParser:
             << self.lexeme(string(')'))
         ).parsecmap(lambda literalExpr: FieldExpr(literalExpr))
 
-        self.term = self.lexeme(self.literal ^ self.fieldgetter ^ self.fieldname)
+        self.arrayexpr = (
+            self.lexeme(string('['))
+            >> sepBy(self.term, self.lexeme(string(','))) << self.lexeme(string(']'))
+        ).parsecmap(lambda arrExpr: ArrayExpr(arrExpr))
+
+        self.setexpr = (
+            self.lexeme(string('set')) >> self.lexeme(string('('))
+            >> self.lexeme(self.term)
+            << self.lexeme(string(')'))
+        ).parsecmap(lambda expr: SetExpr(expr))
+
+        self.term.fn = self.lexeme(self.literal ^ self.fieldgetter ^ self.setexpr ^ self.fieldname ^ self.arrayexpr)
 
         function_name = self.lexeme(string('search') ^ string('match') ^ string('cidrmatch'))
         function_call_args = separated(self.term, self.lexeme(string(',')), mint=2, maxt=2, end=None)
@@ -283,6 +327,9 @@ def main():
     cp.test_string('r"ab\\\\c"', "ab\\\\c")
     cp.test(cp.term, '123')
     cp.test(cp.term, '3.14')
+    cp.test(cp.term, '[1, 2]')
+    cp.test(cp.term, 'set(["a", "b"])')
+    cp.test(cp.term, 'set(get("users"))')
     cp.test(cp.function_call, 'search("pattern", "foo")')
     cp.test_eval('user == "admin"', {'user': "admin"}, True)
     cp.test_eval('user == "admin1"', {'user': "admin"}, False)
@@ -304,6 +351,9 @@ def main():
     cp.test_eval('1 == 1 and 2 != 2 or "foo" == "bar"', {}, False)
     cp.test_eval('1 == 1 and 2 != 2 or "foo" == "bar"', {}, False)
     cp.test_eval('1 == 1 and (2 != 2 or "foo" == "foo")', {}, True)
+    cp.test_eval('[1, 2] == [1, 2]', {}, True)
+    cp.test_eval('[1, 2] == [1, 3]', {}, False)
+    cp.test_eval('set([1, 2]) == set([2, 1, 1])', {}, True)
     cp.test_eval('match("fo+", "foo")', {}, True)
     cp.test_eval('match("fo+", "bar")', {}, False)
     cp.test_eval('match("admin*", user)', {'user': "admin1"}, True)
@@ -318,6 +368,8 @@ def main():
     cp.test_eval('cidrmatch("192.168.1.1/0", clientip)', {'clientip': "1.2.3.4"}, True)
     cp.test_eval('cidrmatch("10.0.0.0/8", clientip)', {'clientip': "10.10.20.30"}, True)
     cp.test_eval('cidrmatch("10.0.0.0/8", clientip)', {'clientip': "11.10.20.30"}, False)
+    cp.test_eval('set(get("users")) <= set(["admin1", "admin2"])', {'users': ['admin1', 'admin2']}, True)
+    cp.test_eval('set(get("users")) <= set(["admin1", "admin2"])', {'users': ['admin1', 'admin3']}, False)
 
 if __name__ == "__main__":
     main()
