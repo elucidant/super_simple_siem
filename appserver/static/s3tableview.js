@@ -116,6 +116,24 @@ define([
                 this.settings.set("severities", severities);
             }, this);
 
+            this.cannedQueriesSearchResults = new SearchManager({
+                id: "canned-queries-search",
+                preview: false,
+                cache: false,
+                search: "| inputlookup canned_queries"
+            }).data('results');
+            this.cannedQueriesSearchResults.on("data", function() {
+                var data = this.cannedQueriesSearchResults.data();
+                var canned_queries = _.indexBy(_.map(data.rows, function(row) {
+                    var item = {};
+                    for (i = 0; i < data.fields.length; i++) {
+                        item[data.fields[i]] = row[i];
+                    }
+                    return item;
+                }), 'type');
+                this.settings.set("canned_queries", canned_queries);
+            }, this);
+
 
             // create manager before we set managerid so that the component can properly
             // configure the manager (uses Splunk view binding machinery)
@@ -192,6 +210,12 @@ define([
                     <!-- <tr><td class="field-key">search earliest</td><td class="field-value"><%- alert.search_earliest %></td></tr> \
                     <tr><td class="field-key">search latest</td><td class="field-value"><%- alert.search_latest %></td></tr> --> \
                 <% } %> \
+                <% if (alert.type in canned) { \
+                    var a = canned[alert.type]; \
+                    try { var href = _.template(a.href, {alert: alert}); } catch (err) {var href = a.href; } \
+                %> \
+                    <tr><td class="field-key">canned query</td><td class="field-value"><a href="<%- href %>" target="_blank"><%- a.label %></a></td></tr> \
+                <% } %> \
                 <% if ("sid" in alert && alert.sid.indexOf("scheduler") != -1) { \
                     var query = "index=_internal sourcetype=scheduler sid=" + alert.sid + " | head 1 | table saved*" \
                 %> \
@@ -200,7 +224,7 @@ define([
                 </tbody> \
                 </table> \
                 </div>',
-                { alert: alert }
+                { alert: alert, canned: this.settings.get("canned_queries") }
             );
 
             _.each(alert.work_log, function(entry) {

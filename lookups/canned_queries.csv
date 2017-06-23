@@ -1,0 +1,2 @@
+type,label,href
+login,more info,health_stats?form.top_timepicker.earliest=<%- alert.search_earliest %>&form.top_timepicker.latest=<%- alert.search_latest %>

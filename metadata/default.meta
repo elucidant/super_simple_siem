@@ -80,6 +80,11 @@ access = read : [ * ], write : [ admin, power ]
 export = system
 owner = nobody
 
+[lookups/canned_queries.csv]
+access = read : [ * ], write : [ admin, power ]
+export = system
+owner = nobody
+
 [transforms/analysts]
 access = read : [ admin, power ], write : [ admin, power ]
 export = none
@@ -106,6 +111,11 @@ export = none
 owner = admin
 
 [transforms/whitelist]
+access = read : [ * ], write : [ admin, power ]
+export = system
+owner = nobody
+
+[transforms/canned_queries]
 access = read : [ * ], write : [ admin, power ]
 export = system
 owner = nobody
