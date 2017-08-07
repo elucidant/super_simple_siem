@@ -129,7 +129,7 @@ class AlertCollection:
                                 'action': 'combine',
                                 'notes': None,
                                 'data': alert_data,
-                                'analyst': username
+                                'analyst': search_context.searchinfo.username
                             })
                         if not preview:
                             self.coll.data.update(existing['_key'], json.dumps(existing))
