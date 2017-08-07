@@ -143,7 +143,6 @@ class MakeAlertsCommand(StreamingCommand):
         #self.logger.info('MakeAlertsCommand: %s, type of record %s', self, type(records))  # logs command line
         #self.logger.info('SEARCHINFO %s', self._metadata.searchinfo)
 
-        self.load_whitelist(self._metadata.searchinfo)
         sid = self._metadata.searchinfo.sid
         self.loggerExtra = CustomLogAdapter(self.logger, {'sid': sid, 'type': self.alert_type})
 
@@ -154,6 +153,7 @@ class MakeAlertsCommand(StreamingCommand):
             self.alerts = AlertCollection(self._metadata.searchinfo.session_key)
 
         for record in records:
+            self.load_whitelist(self._metadata.searchinfo)
             for wl in self.whitelist:
                 context = Context(record)
                 if wl.is_whitelisted(context):
