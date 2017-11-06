@@ -255,17 +255,29 @@ class CriteriaParser:
             op_equal ^ op_not_equal ^ op_ge ^ op_le ^ op_gt ^ op_lt ^ self.paren_comparison ^ self.function_call
         )
 
-        self.conjunction = ((self.comparison << self.lexeme(string("and"))) + self.comparison).parsecmap(
-            lambda t: ComparisonExpr(t[0], t[1], "and", lambda x, y: x and y)
+        self.conjunction = separated(self.comparison, self.lexeme(string('and')), mint=2, maxt=200).parsecmap(
+            lambda t: self.fold2(t, lambda expr1, expr2: ComparisonExpr(expr1, expr2, "and", lambda x, y: x and y))
         ) ^ self.comparison
 
-        self.disjunction = ((self.conjunction << self.lexeme(string("or"))) + self.conjunction).parsecmap(
-            lambda t: ComparisonExpr(t[0], t[1], "or", lambda x, y: x or y)
+        self.disjunction = separated(self.conjunction, self.lexeme(string('or')), mint=2, maxt=200).parsecmap(
+            lambda t: self.fold2(t, lambda expr1, expr2: ComparisonExpr(expr1, expr2, "or", lambda x, y: x or y))
         ) ^ self.conjunction
 
         self.paren_comparison.fn = (self.lexeme(string('(')) >> self.disjunction) << self.lexeme(string(')'))
 
         self.expression = self.ignore >> self.disjunction
+
+    # given xs: [expr_1, expr_2, ..., expr_n-1, expr_n]
+    # returns fun(expr_1, fun(expr_2, ..., fun(exp_n-1, expr_n)))
+    def fold2(self, xs, fun):
+        if (not xs):
+            raise ValueError("parsing logical conjunction and disjunction should have at least 2 operands")
+        elif len(xs) == 1:
+            return xs[0]
+        else:
+            head = xs[0]
+            tail = xs[1:]
+            return fun(head, self.fold2(tail, fun))
 
     def unescape(self, c):
         if c == '\n':
@@ -370,6 +382,19 @@ def main():
     cp.test_eval('cidrmatch("10.0.0.0/8", clientip)', {'clientip': "11.10.20.30"}, False)
     cp.test_eval('set(get("users")) <= set(["admin1", "admin2"])', {'users': ['admin1', 'admin2']}, True)
     cp.test_eval('set(get("users")) <= set(["admin1", "admin2"])', {'users': ['admin1', 'admin3']}, False)
+    cp.test_eval( '1 == 1 and 2 == 2 and 3 == 3', {}, True)
+    cp.test_eval( '1 != 1 and 2 == 2 and 3 == 3', {}, False)
+    cp.test_eval( '1 == 1 and 2 != 2 and 3 == 3', {}, False)
+    cp.test_eval( '1 == 1 and 2 == 2 and 3 != 3', {}, False)
+    cp.test_eval( '1 != 1 or 2 != 2 or 3 != 3', {}, False)
+    cp.test_eval( '1 != 1 or 2 == 2 or 3 == 3', {}, True)
+    cp.test_eval( '1 == 1 or 2 != 2 or 3 == 3', {}, True)
+    cp.test_eval( '1 == 1 or 2 == 2 or 3 != 3', {}, True)
+    cp.test_eval(
+        'User == "u1" and (FQ == "host1" or FQ == "host2") and Fn == r"c:\windows\system32"  and Sig == "s:01"',
+        {'User': 'u1', 'FQ': 'host2', 'Fn': r"c:\windows\system32", 'Sig': "s:01"},
+        True
+    )
 
 if __name__ == "__main__":
     main()
