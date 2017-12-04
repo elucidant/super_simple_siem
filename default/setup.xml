@@ -1,0 +1,18 @@
+<setup>
+  <block title="Configure Super Simple SIEM">
+    <text>As part of the configuration setup, the analysts, canned_queries,
+severities, threats_to_actions and whitelist lookup table will be initialize
+from dummy template files.</text>
+    <text>You are expected to modify those lookup tables using the Lookup File Editor app.</text>
+  </block>
+
+  <block title="Initialization"
+         endpoint="super_simple_siem/initialize" entity="setupentity">
+    <input field="initialization">
+      <label>Check to run initialization steps</label>
+      <type>bool</type>
+    </input>
+
+  </block>
+
+</setup>

@@ -1,5 +1,5 @@
 []
-access = read: [ * ], write : [ admin ]
+access = read: [ * ], write : [ admin, power ]
 
 [commands/makealerts]
 access = read : [ * ], write : [ admin ]
@@ -41,7 +41,6 @@ owner = admin
 access = read : [ * ], write : [ admin, power, user ]
 
 [transforms/alerts]
-access = read : [ * ], write : [ admin, power ]
 export = system
 owner = admin
 
@@ -61,81 +60,29 @@ owner = admin
 owner = admin
 
 [datamodels/alertsmodel]
-access = read : [ * ], write : [ admin, power ]
 export = none
 owner = admin
 
 [models/alertsmodel]
-access = read : [ * ], write : [ admin, power ]
 export = none
 owner = admin
-
-[lookups/analysts.csv]
-access = read : [ * ], write : [ admin, power ]
-export = none
-owner = admin
-
-[lookups/whitelist.csv]
-access = read : [ * ], write : [ admin, power ]
-export = system
-owner = nobody
-
-[lookups/canned_queries.csv]
-access = read : [ * ], write : [ admin, power ]
-export = system
-owner = nobody
-
-[transforms/analysts]
-access = read : [ admin, power ], write : [ admin, power ]
-export = none
-owner = admin
-
-[lookups/threats_to_actions.csv]
-access = read : [ * ], write : [ admin, power ]
-export = none
-owner = admin
-
-[transforms/threats_to_actions]
-access = read : [ * ], write : [ admin, power ]
-export = none
-owner = admin
-
-[lookups/severities.csv]
-access = read : [ * ], write : [ admin, power ]
-export = none
-owner = admin
-
-[transforms/severities]
-access = read : [ * ], write : [ admin, power ]
-export = none
-owner = admin
-
-[transforms/whitelist]
-access = read : [ * ], write : [ admin, power ]
-export = system
-owner = nobody
-
-[transforms/canned_queries]
-access = read : [ * ], write : [ admin, power ]
-export = system
-owner = nobody
 
 [searchbnf]
 export = system
 
 [macros/alerts_work_stats]
-access = read : [ * ], write : [ admin, power ]
 export = system
 owner = nobody
 
 [savedsearches/super_simple_siem_test_alert]
-access = read : [ * ], write : [ admin, power ]
 export = none
 owner = admin
 
-[]
-access = read : [ * ], write : [ admin, mssp, power ]
-export = none
-version = 6.5.0
-modtime = 1495211591.260310000
+[transforms/whitelist]
+export = system
+owner = nobody
+
+[lookups/whitelist.csv]
+export = system
+owner = nobody
 

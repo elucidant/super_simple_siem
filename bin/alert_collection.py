@@ -19,9 +19,11 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 
 import sys, json
 from splunklib.client import connect
+from splunklib.binding import HTTPError
 from utils import parse
 import time
 import logging
+import os.path
 
 # This is used to pass information to log things in context as well as report messages.
 class SearchContext:
