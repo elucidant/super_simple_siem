@@ -47,6 +47,12 @@ class AlertCollection:
         self.session_key = session_key
         self.alert_service = connect(token=session_key, app=self.app_name)
         self.coll = self.alert_service.kvstore[self.coll_name]
+        try:
+            siem_conf = self.alert_service.confs['super_simple_siem']
+            siem_constants = siem_conf['constants']
+            self.batch_size = int(siem_constants['batch_size'])
+        except:
+            self.batch_size = 10000
 
     def purge(self):
         self.coll.data.delete()
@@ -224,6 +230,18 @@ class AlertCollection:
         encoded = json.dumps(q)
         return self.coll.data.query(query=encoded)
 
+    def query_wrapper(self, query_dict):
+        query_json = json.dumps(query_dict)
+        results = []
+        skip = 0
+        while True:
+            batch = self.coll.data.query(query=query_json, limit=self.batch_size, skip=skip, sort='_key')
+            results.extend(batch)
+            skip += len(batch)
+            if len(batch) < self.batch_size:
+                break
+        return sorted(results, key=lambda r: -r['time'])
+
     def list(self, status = [], type=[], severity=[], analyst=[], entity=[],
             earliest_time=None, latest_time=None,
             logger=None):
@@ -256,18 +274,16 @@ class AlertCollection:
             if qss: clauses.append(qss)
             if earliest_time: clauses.append({'time': {'$gte': earliest_time}})
             if latest_time: clauses.append({'time': {'$lt': latest_time}})
-            encoded = json.dumps({ '$and': clauses })
-            res =  self.coll.data.query(query=encoded)
+            res = self.query_wrapper({ '$and': clauses })
         else:
             if earliest_time or latest_time:
                 clauses = []
                 if earliest_time: clauses.append({'time': {'$gte': earliest_time}})
                 if latest_time: clauses.append({'time': {'$lt': latest_time}})
-                encoded = json.dumps({ '$and': clauses })
-                res =  self.coll.data.query(query=encoded)
+                res = self.query_wrapper({ '$and': clauses })
             else:
-                res = self.coll.data.query()
-        return sorted(res, key=lambda r: -r['time'])
+                res = self.query_wrapper({})
+        return res
 
     def dump(self):
         print("Collection data: %s" % json.dumps(self.coll.data.query(), indent=1))
