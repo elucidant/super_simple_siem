@@ -737,7 +737,7 @@ class Endpoint(object):
         if path_segment.startswith('/'):
             path = path_segment
         else:
-            path = self.service._abspath(self.path + path_segment, owner=owner,
+            path = self.service._abspath(UrlEncoded(self.path) + path_segment, owner=owner,
                                          app=app, sharing=sharing)
         # ^-- This was "%s%s" % (self.path, path_segment).
         # That doesn't work, because self.path may be UrlEncoded.
