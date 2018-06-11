@@ -318,10 +318,11 @@ require([
             //console.log(defaultTokenModel);
         }
 
-		var s3tableview = new S3TableView({
-			id: "s3tableview",
-			el: $("#s3tableview")
-		});
+        var s3tableview = new S3TableView({
+            id: "s3tableview",
+            el: $("#s3tableview")
+        });
+
         s3tableview.filter.set("status", defaultTokenModel.get("form.status"));
         s3tableview.filter.set("type", defaultTokenModel.get("form.type"));
         s3tableview.filter.set("analyst", defaultTokenModel.get("form.analyst"));

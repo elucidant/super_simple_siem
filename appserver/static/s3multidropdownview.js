@@ -24,14 +24,16 @@ define([
         $
         ) {
     // Define the custom view class
-    var S3MultiDropDownView = MultiDropdownView.extend({
+    var S3MultiDropDownView = MultiDropdownView.extend(/** @lends splunkjs.mvc.MultiDropdownView.prototype */{
         className: "multidropdownview",
+
+        // For Splunk 6.5
         convertDataToChoices: function(data) {
             //return MultiDropdownView.prototype.convertDataToChoices.apply(this, [data]);
             data = data || this._data;
-            choices = [];
+            var choices = [];
             var valueField = this.settings.get("valueField") || 'value';
-			if (data.length == 1) {
+			if (data != null && data.length == 1) {
                 var row = data[0]
                 var values = row[valueField];
                 if (typeof values === 'string') {
@@ -42,9 +44,33 @@ define([
                 });
 			}
             return choices;
+        },
 
+        // For Splunk 7.1
+        _updateDisplayedChoices: function(data) {
+            data = data || this._data;
+            var valueField = this.settings.get("valueField") || 'value';
+            var labelField = this.settings.get("labelField") || valueField;
+
+            var choices = [];
+            var valueField = this.settings.get("valueField") || 'value';
+			if (data != null && data.length == 1) {
+                var row = data[0]
+                var values = row[valueField];
+                if (typeof values === 'string') {
+                    values = [ values ];
+                }
+                choices = _.map(values, function(v) {
+                    return { label: v, value: v };
+                });
+			}
+            this._displayedChoices = choices;
+
+            this._handleSelectFirstChoice();
+            this.updateSelectedLabel();
         }
     });
+
     return S3MultiDropDownView;
 });
 
