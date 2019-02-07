@@ -86,3 +86,11 @@ owner = nobody
 export = system
 owner = nobody
 
+[alert_actions/super_simple_siem_alert]
+export = system
+owner = nobody
+
+[alerts/super_simple_siem_alert]
+export = system
+owner = nobody
+

@@ -210,6 +210,14 @@ define([
                     <!-- <tr><td class="field-key">search earliest</td><td class="field-value"><%- alert.search_earliest %></td></tr> \
                     <tr><td class="field-key">search latest</td><td class="field-value"><%- alert.search_latest %></td></tr> --> \
                 <% } %> \
+                <% if (("search_name" in alert) && ("search_owner" in alert) && ("search_app" in alert)) { \
+                %> \
+                    <tr><td class="field-key">search name</td><td class="field-value"><a href="/manager/search/saved/searches?app=<%- encodeURIComponent(alert.search_app) %>&count=10&offset=0&itemType=&owner=<%- encodeURIComponent(alert.search_owner) %>&search=<%- encodeURIComponent(alert.search_name) %>" target="_blank"><%- alert.search_name %></a></td></tr> \
+                <% } %> \
+                <% if ("results_link" in alert) { \
+                %> \
+                    <tr><td class="field-key">search results</td><td class="field-value"><a href="<%- alert.results_link %>" target="_blank">results</a></td></tr> \
+                <% } %> \
                 <% if (alert.type in canned) { \
                     var a = canned[alert.type]; \
                     try { var href = _.template(a.href, {alert: alert}); } catch (err) {var href = a.href; } \

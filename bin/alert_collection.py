@@ -175,6 +175,64 @@ class AlertCollection:
             logger.error('message="Missing fields in record: %s"', missing)
             insert_stats.errors += 1
 
+    # insert the record when it originates from the custom alert (not from makealerts)
+    def insert_custom_alert(self, record,
+            event_time='_time',
+            entity='entity',
+            alert_type=None,
+            severity=None,
+            app=None,
+            owner=None,
+            search_name=None,
+            sid=None,
+            server_host=None,
+            server_uri=None,
+            search_uri=None,
+            results_link=None,
+            logger=None
+            ):
+
+        alert_data = {self.fix_field_name(key): value for key, value in record.iteritems()}
+        alert_record = { 'data': alert_data }
+
+        if event_time in record:
+            alert_record['time'] = float(record[event_time])
+        else:
+            alert_record['time'] = time.time()
+
+        if entity in record:
+            alert_record['entity'] = record[entity]
+        else:
+            alert_record['entity'] = ''
+
+        alert_record['type'] = alert_type
+        alert_record['status'] = 'open'
+        if severity:
+            alert_record['severity'] = severity
+        alert_record['analyst'] = None
+        alert_record['sid'] = sid
+        alert_record['search_app'] = app
+        alert_record['search_owner'] = owner
+        alert_record['search_name'] = search_name
+        alert_record['search_uri'] = search_uri
+        alert_record['results_link'] = results_link
+        alert_record['work_log'] = [ {
+            'time': time.time(),
+            'action': 'create',
+            'notes': None,
+            'data': {},
+            'analyst': owner
+        } ]
+        missing = set(['time', 'entity', 'type']) - set(alert_record.keys())
+        if missing:
+            if logger:
+                logger.error('alert not inserted, missing fields %s', missing)
+        else:
+            alert_id = self.coll.data.insert(json.dumps(alert_record))
+            if alert_id:
+                if logger:
+                    logger.info('alert inserted %s', alert_id)
+
     # CSV file with a single json column with the json as exported by | listalerts json=json
     def csv_import(self, file_of_json_inside_csv):
         import csv

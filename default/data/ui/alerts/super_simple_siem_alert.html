@@ -1,0 +1,55 @@
+<form class="form-horizontal form-complex">
+
+<div class="control-group">
+<label class="control-label" for="super_simple_siem_alert_entity">entity</label>
+<div class="controls">
+<input type="text" name="action.super_simple_siem_alert.param.entity" id="super_simple_siem_alert_entity" />
+<span class="help-block">
+Field name to use for entity (e.g. user or src_ip).
+</span>
+</div>
+</div>
+
+<div class="control-group">
+<label class="control-label" for="super_simple_siem_alert_type">type</label>
+<div class="controls">
+<input type="text" name="action.super_simple_siem_alert.param.type" id="super_simple_siem_alert_type" />
+<span class="help-block">
+Type name of the alert created, can contain space.
+For instance "Brute Force Detection".
+</span>
+</div>
+</div>
+
+<div class="control-group">
+<label class="control-label" for="super_simple_siem_alert_time">time</label>
+<div class="controls">
+<input type="text" name="action.super_simple_siem_alert.param.time" id="super_simple_siem_alert_time" />
+<span class="help-block">
+Field containing the time (typically _time).
+</span>
+</div>
+</div>
+
+<div class="control-group">
+<label class="control-label" for="super_simple_siem_alert_severity">severity</label>
+<div class="controls">
+<input type="text" name="action.super_simple_siem_alert.param.severity" id="super_simple_siem_alert_severity" />
+<span class="help-block">
+Field containing the severity (critical, high, medium, low).
+</span>
+</div>
+</div>
+
+<div class="control-group">
+<label class="control-label" for="super_simple_siem_alert_max_count">max_count</label>
+<div class="controls">
+<input type="text" name="action.super_simple_siem_alert.param.max_count" id="super_simple_siem_alert_max_count" />
+<span class="help-block">
+Max number of super simple siem events to create for a single alert (defaults to 100). Use 0 or less for no limit.
+</span>
+</div>
+</div>
+
+</form>
+
