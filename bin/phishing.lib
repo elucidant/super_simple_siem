@@ -1,0 +1,621 @@
+# Copyright 2016-2019 Jean-Laurent Huynh
+#
+# Licensed under the Apache License, Version 2.0 (the "License"): you may
+# not use this file except in compliance with the License. You may obtain
+# a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+# License for the specific language governing permissions and limitations
+# under the License.
+
+# The file extension is lib to avoid using .py so that Splunk does not consider
+# this file as a modular input. Instead the binary specific phishing.sh should
+# be called.
+
+import sys
+import xml.dom.minidom, xml.sax.saxutils
+import logging
+import time
+import json
+import os
+import csv
+import re
+import dateparser
+import html2text
+from datetime import datetime, timedelta
+from exchangelib import DELEGATE, IMPERSONATION, Account, Credentials, ServiceAccount, \
+    EWSDateTime, EWSTimeZone, Configuration, NTLM, GSSAPI, CalendarItem, Message, Mailbox, \
+    Attendee, Q, ExtendedProperty, FileAttachment, ItemAttachment, HTMLBody, Build, Version, \
+    FolderCollection, UTC, Folder
+from exchangelib.errors import ErrorFolderNotFound
+
+
+#set up logging suitable for splunkd comsumption
+logging.root
+# Do not use DEBUG on a permanent basis, exchangelib is quite verbose
+logging.root.setLevel(logging.WARNING)
+formatter = logging.Formatter('%(levelname)s %(message)s')
+handler = logging.StreamHandler()
+handler.setFormatter(formatter)
+logging.root.addHandler(handler)
+
+MASK = "--------"
+
+SCHEME = """<scheme>
+    <title>Phishing</title>
+    <description>Process the phishing inbox</description>
+    <use_external_validation>true</use_external_validation>
+    <streaming_mode>simple</streaming_mode>
+    <endpoint>
+        <args>
+            <arg name="name">
+                <title>Input Name</title>
+                <description>Name parameter description.</description>
+            </arg>
+
+            <arg name="mailbox">
+                <title>Mailbox</title>
+                <description>mailbox to monitor (e.g. phishing@example.com)</description>
+            </arg>
+
+            <arg name="domain">
+                <title>Domain</title>
+                <description>domain name</description>
+            </arg>
+
+            <arg name="username">
+                <title>Username</title>
+                <description>username to access mailbox</description>
+            </arg>
+
+            <arg name="password">
+                <title>Password</title>
+                <description>password for username</description>
+            </arg>
+
+            <arg name="folder">
+                <title>Folder</title>
+                <description>Folder to monitor (falls back to Inbox if missing)</description>
+                <required_on_create>false</required_on_create>
+            </arg>
+
+            <arg name="max_count">
+                <title>Maximum Count</title>
+                <description>Cap number of emails retrieve per invocation, defaults to 100 if not provided</description>
+            </arg>
+
+            <arg name="lag_seconds">
+                <title>Processing Delay</title>
+                <description>Minimum number of seconds from time reported before message is considered for processing, defaults to 3600</description>
+            </arg>
+
+            <arg name="move_to_completed">
+                <title>Move to Completed folder</title>
+                <description>If true, move to completed folders, defaults to false.</description>
+            </arg>
+        </args>
+    </endpoint>
+</scheme>
+"""
+
+def encrypt_password(username, password, session_key):
+    import splunklib.client as client
+    args = {'token':session_key}
+    service = client.connect(**args)
+    
+    try:
+        # If the credential already exists, delete it.
+        for storage_password in service.storage_passwords:
+            if storage_password.username == username:
+                service.storage_passwords.delete(username=storage_password.username)
+                break
+
+        # Create the credential.
+        service.storage_passwords.create(password, username)
+
+    except Exception as e:
+        raise Exception, "An error occurred updating credentials. Please ensure your user account has admin_all_objects and/or list_storage_passwords capabilities. Details: %s" % str(e)
+
+def mask_password(full_input_name, session_key, username):
+    import splunklib.client as client
+    try:
+        args = {'token':session_key}
+        service = client.connect(**args)
+        kind, input_name = full_input_name.split("://")
+        item = service.inputs.__getitem__((input_name, kind))
+        
+        kwargs = {
+            "username": username,
+            "password": MASK
+        }
+        item.update(**kwargs).refresh()
+            
+    except Exception as e:
+        raise Exception("Error updating inputs.conf: %s" % str(e))
+
+def get_password(session_key, username):
+    import splunklib.client as client
+    args = {'token':session_key}
+    service = client.connect(**args)
+
+    # Retrieve the password from the storage/passwords endpoint	
+    for storage_password in service.storage_passwords:
+        if storage_password.username == username:
+            return storage_password.content.clear_password
+
+def do_scheme():
+	print SCHEME
+
+# prints XML error data to be consumed by Splunk
+def print_error(s):
+    print "<error><message>%s</message></error>" % xml.sax.saxutils.escape(s)
+
+def validate_conf(config, key):
+    if key not in config:
+        raise Exception, "Invalid configuration received from Splunk: key '%s' is missing." % key
+
+#read XML configuration passed from splunkd
+def get_config():
+    config = {}
+
+    try:
+        # read everything from stdin
+        config_str = sys.stdin.read()
+
+        # parse the config XML
+        doc = xml.dom.minidom.parseString(config_str)
+        root = doc.documentElement
+        conf_node = root.getElementsByTagName("configuration")[0]
+        if conf_node:
+            logging.debug("XML: found configuration")
+            stanza = conf_node.getElementsByTagName("stanza")[0]
+            if stanza:
+                stanza_name = stanza.getAttribute("name")
+                if stanza_name:
+                    logging.debug("XML: found stanza " + stanza_name)
+                    config["name"] = stanza_name
+
+                    params = stanza.getElementsByTagName("param")
+                    for param in params:
+                        param_name = param.getAttribute("name")
+                        logging.debug("XML: found param '%s'" % param_name)
+                        if param_name and param.firstChild and \
+                           param.firstChild.nodeType == param.firstChild.TEXT_NODE:
+                            data = param.firstChild.data
+                            config[param_name] = data
+                            #logging.debug("XML: '%s' -> '%s'" % (param_name, data))
+
+        checkpnt_node = root.getElementsByTagName("checkpoint_dir")[0]
+        if checkpnt_node and checkpnt_node.firstChild and \
+           checkpnt_node.firstChild.nodeType == checkpnt_node.firstChild.TEXT_NODE:
+            config["checkpoint_dir"] = checkpnt_node.firstChild.data
+        checkpnt_node = root.getElementsByTagName("session_key")[0]
+        if checkpnt_node and checkpnt_node.firstChild and \
+           checkpnt_node.firstChild.nodeType == checkpnt_node.firstChild.TEXT_NODE:
+            config["session_key"] = checkpnt_node.firstChild.data
+
+        if not config:
+            raise Exception, "Invalid configuration received from Splunk."
+
+        # just some validation: make sure these keys are present (required)
+        validate_conf(config, "name")
+        validate_conf(config, "mailbox")
+        validate_conf(config, "domain")
+        validate_conf(config, "username")
+        validate_conf(config, "password")
+        validate_conf(config, "checkpoint_dir")
+        validate_conf(config, "session_key")
+    except Exception, e:
+        raise Exception, "Error getting Splunk configuration via STDIN: %s" % str(e)
+
+    return config
+
+def get_validation_data():
+    val_data = {}
+
+    # read everything from stdin
+    val_str = sys.stdin.read()
+
+    # parse the validation XML
+    doc = xml.dom.minidom.parseString(val_str)
+    root = doc.documentElement
+
+    logging.debug("XML: found items")
+    item_node = root.getElementsByTagName("item")[0]
+    if item_node:
+        logging.debug("XML: found item")
+
+        name = item_node.getAttribute("name")
+        val_data["stanza"] = name
+
+        params_node = item_node.getElementsByTagName("param")
+        for param in params_node:
+            name = param.getAttribute("name")
+            logging.debug("Found param %s" % name)
+            if name and param.firstChild and \
+               param.firstChild.nodeType == param.firstChild.TEXT_NODE:
+                val_data[name] = param.firstChild.data
+
+    return val_data
+
+def validate_config(username, password):
+    try:
+        pass
+    except Exception,e:
+        print_error("Invalid configuration specified: %s" % str(e))
+        sys.exit(1)	
+
+
+# Put all EWS related function into one class to control import
+class Poller:
+
+    analyst_category_prefix = 'Assigned - '
+
+    valid_categories = ['Legitimate External Emails', 'Legitimate Internal Emails',
+        'Legitimate Partner Emails', 'Pre-Phishing', 'Spearphishing', 'Whaling', 'Phishing with Links',
+        'Phishing with Links and Attachments', 'Phishing with Attachments', 'Spam/Marketing', 'Scam',
+        'Replies/Communication', 'Phishing Campaign', 'Disregard/Accidental Report']
+
+    potential_phishing_subject = 'POTENTIAL PHISHING'
+
+    tz = EWSTimeZone.timezone('America/Los_Angeles')
+    tz_local = EWSTimeZone.localzone()
+
+    def check_disposition(self, category):
+        """Return normalized disposition or None."""
+        matches = [c for c in self.valid_categories if c.lower() == category.lower()]
+        if matches:
+            logging.debug('valid category ' + category)
+            return matches[0]
+        else:
+            logging.warning('category ' + category + ' is not normalized')
+            return None
+
+
+    def check_attachment(self, attachment):
+        """Returns the date and time this email attachment was received in the local timezone"""
+        if not attachment.item.datetime_received:
+            return None
+        return attachment.item.datetime_received.astimezone(self.tz)
+
+
+    def try_date_format(self, str_date, str_format):
+        """Tries to parse str_date using str_format, returns None if unsuccessful"""
+        try:
+            return datetime.strptime(str_date, str_format)
+        except ValueError:
+            return None
+
+
+    def try_date_formats(self, str_date, formats):
+        """Tries to parse str_date using each format string in formats, falls back to dateparser.parse.
+        Returns None if unsuccessful"""
+        for f in formats:
+            d = self.try_date_format(str_date, f)
+            if d:
+                return d
+        d = dateparser.parse(str_date)
+        return d
+
+
+    def extract(self, item):
+        """
+        Extracts key information from the message and its attachments
+
+        All date time are returned in local timezones.
+        """
+
+        ews_id = item.id
+        user = item.sender.email_address
+        display_from = None
+        subject = item.subject
+        original_subject = subject
+        reported = None
+        received = None
+        resolved = None
+        assignee = None
+        phishing_button = False
+        needs_metrics = False
+        clicked_or_replied = False
+        replies_communication = False
+        message_id = item.message_id
+        conversation_id = item.conversation_id.id
+        in_reply_to = item.in_reply_to
+        marketing_bulk_tag = False
+        text_body = None
+
+        disposition = None
+        reported = item.datetime_received.astimezone(self.tz)
+
+        text_body = item.text_body
+
+        if subject == self.potential_phishing_subject:
+            phishing_button = True
+            for attachment in item.attachments:
+                if isinstance(attachment, ItemAttachment) and isinstance(attachment.item, Message):
+                    received = self.check_attachment(attachment)
+                    original_subject = attachment.item.subject
+                    text_body = attachment.item.text_body
+                    display_from = attachment.item.sender.email_address if attachment.item.sender else None
+                    if not text_body and attachment.item.body:
+                        text_body = html2text.html2text(attachment.item.body)
+        else:
+            if text_body:
+                sent_match = re.search(r'(?ms)Sent: ([^\n\r]*)', text_body)
+                if not sent_match:
+                    sent_match = re.search(r'(?ms)Date: ([^\n\r]*)', text_body)
+                if sent_match:
+                    received = self.try_date_formats(sent_match.group(1),
+                        ['%A, %B %d, %Y %H:%M %p', '%A, %B %d, %Y %H:%M:%S %p'])
+                    if not received:
+                        logging.warning('TODO: handle ' + sent_match.group(1))
+                    else:
+                        # we are making a guess here that the user timezone is Pacific
+                        received = received.replace(tzinfo = self.tz)
+                else:
+                    for attachment in item.attachments:
+                        if isinstance(attachment, ItemAttachment) and \
+                                isinstance(attachment.item, Message):
+                            received = self.check_attachment(attachment)
+                            break
+                from_match = re.search(r'(?ms)From: ([^\n\r]*)', text_body)
+                if from_match:
+                    display_from = from_match.group(1)
+            else:
+                logging.warning('TODO: no item.text_body')
+
+        if item.categories:
+            for c in item.categories:
+                if c.startswith(self.analyst_category_prefix):
+                    assignee = c[len(self.analyst_category_prefix) : ].strip()
+                elif c == 'Needs Metrics':
+                    needs_metrics = True
+                elif c == 'Clicked or Replied':
+                    clicked_or_replied = True
+                elif c == 'Replies/Communication':
+                    replies_communication = True
+                else:
+                    tmp_disp = self.check_disposition(c)
+                    if not tmp_disp:
+                        logging.warning('Ignoring category ' + c)
+                    else:
+                        disposition = tmp_disp
+
+        if disposition or True:
+            resolved = item.last_modified_time.astimezone(self.tz)
+
+        if original_subject and ('[BULK]' in original_subject or '[MARKETING]' in original_subject):
+            marketing_bulk_tag = True
+
+        return {
+            'ews_id': ews_id,
+            'user': user.lower(),
+            'display_from': display_from,
+            'reported_subject': subject,
+            'subject': original_subject,
+            'received': received,
+            'reported': reported,
+            'resolved': resolved,
+            'assignee': assignee,
+            'disposition': disposition,
+            'phishing_button': phishing_button,
+            'needs_metrics': needs_metrics,
+            'clicked_or_replied': clicked_or_replied,
+            'replies_communication': replies_communication,
+            'message_id': message_id,
+            'conversation_id': conversation_id,
+            'in_reply_to': in_reply_to,
+            'marketing_bulk_tag': marketing_bulk_tag
+            #, 'text_body': text_body
+        }
+
+    def extract_or_log(self, item):
+        try:
+            return self.extract(item)
+        except Exception as e:
+            logging.exception("Unable to extract email: %s" % str(e))
+
+    def get_body(self, row):
+        """Read the template from disk from disposition and return the body to send back."""
+        if row['disposition']:
+            filename = re.sub(r'[^0-9A-Za-z_]', '_', row['disposition']) + '.txt'
+            with open(filename, 'r') as file:
+                try:
+                    text = file.read()
+                    return text
+                except IOError as e:
+                    exc_type, exc_obj, exc_tb = sys.exc_info()
+                    logging.error("Unable to get body for auto-reply: %s at line %d" % (str(e), exc_tb.tb_lineno))
+                    return None
+        else:
+            return None
+
+    def get_folder_or_create(self, parent_folder, name):
+        """Retrieve child folder, create if necessary and return child folder object."""
+        try:
+            return parent_folder / name
+        except ErrorFolderNotFound as e:
+            logging.warning('Creating folder ' + name)
+            f = Folder(parent=parent_folder, name=name)
+            f.save()
+            return f
+
+
+    def poll(self, domain, user, mailbox, password, folder_name, move_to_completed, reply, max_count, lag_seconds):
+        """Poll the mailbox"""
+
+        credentials = Credentials(domain + '\\' + user, password)
+        account = Account(mailbox, credentials=credentials, autodiscover=True)
+        completed_folder = None
+        dest_folders = {}
+
+        if folder_name:
+            fc = account.msg_folder_root.glob('**/' + folder_name)
+            if len(fc.folders) == 1:
+                folder = fc.folders[0]
+            else:
+                logging.warning('Cannot find folder or ambiguous folder in', account.msg_folder_root.tree())
+                return
+        else:
+            folder = account.inbox
+
+        logging.info('Searching in folder ' + folder.name)
+
+        # leave the items in the inbox for some time before processing
+        cutoff = datetime.utcnow().replace(tzinfo=UTC).astimezone(self.tz) - timedelta(seconds=lag_seconds)
+        items = folder.all().filter(datetime_received__lt=cutoff).order_by('datetime_received')[0:max_count]
+
+        rows = [self.extract_or_log(item) for item in items ]
+
+        def default(o):
+            if isinstance(o, (datetime, EWSDateTime)):
+                return o.isoformat()
+            # Let the base class default method raise the TypeError
+            raise TypeError('cannot serialize ' + str(o))
+
+        total_count = 0
+        processed_count = 0
+        for row in rows:
+            #logging.debug(row)
+            total_count += 1
+            if reply and row['disposition']:
+                if row['disposition'] == 'Spam/Marketing':
+                    if row['user'] and not row['marketing_bulk_tag']:
+                        item = folder.get(id=row['ews_id'])
+                        if item:
+
+                            body = self.get_body(row)
+                            if body:
+                                logging.info('Replying to ' + row['user'] + ' for disposition ' + row['disposition'])
+                                #item.reply( subject='RE: ' + row['subject'], body=body, to_recipients = [ row['user'] ])
+                                row['replied'] = self.tz_local.localize(EWSDateTime.now()).astimezone(tz=self.tz)
+                                logging.info(row['replied'])
+                    else:
+                        logging.info('No need to reply to ' + row['user'] + ' because [MARKETING]')
+                else:
+                    logging.warning('TODO reply to ' + row['user'] + ' for disposition ' + row['disposition'])
+
+            if row and row['needs_metrics'] and (row['disposition'] or row['replies_communication']):
+                processed_count += 1
+                row['_time'] = row['reported']
+                row['processed'] = datetime.utcnow().replace(tzinfo=UTC).astimezone(self.tz)
+
+                epoch = datetime.utcfromtimestamp(0).replace(tzinfo=UTC)
+                def unix_time_epoch(k):
+                    if k in row and row[k]:
+                        return (row[k].astimezone(UTC) - epoch).total_seconds()
+                    return None
+                row['epoch_received'] = unix_time_epoch('received')
+                row['epoch_resolved'] = unix_time_epoch('resolved')
+
+                # remove all null fields because Splunk will show them as 'null'
+                row_no_none = {k: v for k, v in row.items() if v is not None}
+                print json.dumps(row_no_none, default=default, sort_keys=True)
+                #logging.warning(json.dumps(row, default=default, sort_keys=True))
+
+                if move_to_completed:
+                    row['reported'] = row['reported']
+                    # Figure out name of folder based on reported date
+                    if not completed_folder:
+                        fc = account.msg_folder_root.glob('**/Completed')
+                        if len(fc.folders) == 1:
+                            completed_folder = fc.folders[0]
+                        else:
+                            logging.warning("Multiple 'Completed' folders found, messages will not be moved")
+                            move_to_completed = False
+                    if completed_folder:
+                        parent_folder_name = row['reported'].strftime('%Y')
+                        dest_folder_name = row['reported'].strftime('%m %B %Y')
+                        logging.info('parent_folder_name=%s, dest_folder_name=%s' % (parent_folder_name, dest_folder_name))
+                        dest_folder = dest_folders.get(dest_folder_name)
+                        if not dest_folder:
+                            year_folder = self.get_folder_or_create(completed_folder, parent_folder_name)
+                            if year_folder:
+                                dest_folder = self.get_folder_or_create(year_folder, dest_folder_name)
+                                dest_folders[dest_folder_name] = dest_folder
+                        if dest_folder:
+                            item = folder.get(id=row['ews_id'])
+                            logging.info('Move ' + str(item.sender.email_address) + ' sent at ' + str(row['reported']) + ' to ' + str(dest_folder))
+                            item.move(dest_folder)
+                        else:
+                            logging.warning('Cannot find folder ' + dest_folder_name)
+        logging.warning('Processed %d out of %d messages' % (processed_count, total_count))
+        
+
+def run():
+	config = get_config()
+
+        name = config["name"]
+	mailbox = config["mailbox"]
+	domain = config["domain"]
+	username = config["username"]
+	password = config["password"]
+	folder = config.get("folder")
+        if "max_count" in config:
+            max_count = int(config["max_count"])
+        else:
+            max_count = 100
+
+        if "lag_seconds" in config:
+            lag_seconds = int(config["lag_seconds"])
+        else:
+            lag_seconds = 3600
+
+        move_to_completed = False
+        if "move_to_completed" in config:
+            if config["move_to_completed"].lower() == "true" or config["move_to_completed"] == 1:
+                move_to_completed = True
+
+        session_key = config["session_key"]
+        reply = False
+        
+        if session_key:
+
+            try:
+                if password != MASK:
+                    logging.info("Encrypting password for username=%s" % username)
+                    encrypt_password(username, password, session_key)
+                    mask_password(name, session_key, username)
+                clear_password = get_password(session_key, username)
+                logging.info("Using user %s" % username)
+
+                poller = Poller()
+                poller.poll(domain, username, mailbox, clear_password,
+                    folder,
+                    move_to_completed, 
+                    reply,
+                    max_count,
+                    lag_seconds
+                    )
+            except Exception as e:
+                logging.exception("Error while polling: %s" % str(e))
+
+
+if __name__ == '__main__':
+    if len(sys.argv) > 1 and sys.argv[1] == 'conda':
+        argv = sys.argv[1:]
+        if len(argv) > 1:
+            if argv[1] == "--scheme":
+                do_scheme()
+            elif argv[1] == "--validate-arguments":
+                if len(argv) > 3:
+                    validate_config(argv[2], argv[3])
+                else:
+                    print 'supply username and password'
+            elif argv[1] == "--test":
+                print 'No tests for the scheme present'
+            else:
+                print 'You giveth weird arguments'
+        else:
+            # just request data from Twitter
+            run()
+
+        sys.exit(0)
+    else:
+        print "script should be called from conda and passing conda as the first argument"
+        sys.exit(1)
+
