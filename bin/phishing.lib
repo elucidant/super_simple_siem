@@ -258,7 +258,8 @@ class Poller:
     valid_categories = ['Legitimate External Emails', 'Legitimate Internal Emails',
         'Legitimate Partner Emails', 'Pre-Phishing', 'Spearphishing', 'Whaling', 'Phishing with Links',
         'Phishing with Links and Attachments', 'Phishing with Attachments', 'Spam/Marketing', 'Scam',
-        'Replies/Communication', 'Phishing Campaign', 'Disregard/Accidental Report']
+        'Replies/Communication', 'Phishing Campaign', 'Disregard/Accidental Report',
+        'Disregard/Request cannot be fulfilled']
 
     potential_phishing_subject = 'POTENTIAL PHISHING'
 
