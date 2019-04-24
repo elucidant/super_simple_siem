@@ -13,7 +13,7 @@
 # under the License.
 
 # The file extension is lib to avoid using .py so that Splunk does not consider
-# this file as a modular input. Instead the binary specific phishing.sh should
+# this file as a modular input. Instead the binary specific trap.sh should
 # be called.
 
 import sys
@@ -46,8 +46,8 @@ logging.root.addHandler(handler)
 MASK = "--------"
 
 SCHEME = """<scheme>
-    <title>Phishing</title>
-    <description>Process the phishing inbox</description>
+    <title>TRAP</title>
+    <description>Process the Proofpoint TRAP inbox</description>
     <use_external_validation>true</use_external_validation>
     <streaming_mode>simple</streaming_mode>
     <endpoint>
@@ -59,7 +59,7 @@ SCHEME = """<scheme>
 
             <arg name="mailbox">
                 <title>Mailbox</title>
-                <description>mailbox to monitor (e.g. phishing@example.com)</description>
+                <description>mailbox to monitor (e.g. proofpointdetection.serviceaccount@example.com)</description>
             </arg>
 
             <arg name="domain">
@@ -93,10 +93,6 @@ SCHEME = """<scheme>
                 <description>Minimum number of seconds from time reported before message is considered for processing, defaults to 3600</description>
             </arg>
 
-            <arg name="move_to_completed">
-                <title>Move to Completed folder</title>
-                <description>If true, move to completed folders, defaults to false.</description>
-            </arg>
         </args>
     </endpoint>
 </scheme>
@@ -249,33 +245,38 @@ def validate_config(username, password):
         print_error("Invalid configuration specified: %s" % str(e))
         sys.exit(1)	
 
+def load_checkpoint(config):
+    """
+    Load the most recent epoch and message_ids for this second processed.
+    Return an (epoch, [message_id]) tuple to start ingesting from or None.
+    Config is the config provided to the script.
+    """
+    filename = os.path.join(config["checkpoint_dir"], 'epoch')
+    if os.path.exists(filename):
+        with open(filename, 'r') as f:
+            content = f.read().splitlines()
+            epoch = int(content[0])
+            message_ids = content[1:]
+            return (epoch, message_ids)
+    else:
+        return None
+
+def save_checkpoint(config, epoch, message_ids):
+    """
+    Save the checkpoint (the last epoch processed as well as all message ids for that epoch).
+    """
+    filename = os.path.join(config["checkpoint_dir"], 'epoch')
+    with open(filename, 'w') as f:
+        f.write(str(int(epoch)) + '\n')
+        for message_id in message_ids:
+            f.write(message_id + '\n')
+
 
 # Put all EWS related function into one class to control import
 class Poller:
 
-    analyst_category_prefix = 'Assigned - '
-
-    valid_categories = ['Legitimate External Emails', 'Legitimate Internal Emails',
-        'Legitimate Partner Emails', 'Pre-Phishing', 'Spearphishing', 'Whaling', 'Phishing with Links',
-        'Phishing with Links and Attachments', 'Phishing with Attachments', 'Spam/Marketing', 'Scam',
-        'Replies/Communication', 'Phishing Campaign', 'Disregard/Accidental Report',
-        'Disregard/Request cannot be fulfilled']
-
-    potential_phishing_subject = 'POTENTIAL PHISHING'
-
     tz = EWSTimeZone.timezone('America/Los_Angeles')
     tz_local = EWSTimeZone.localzone()
-
-    def check_disposition(self, category):
-        """Return normalized disposition or None."""
-        matches = [c for c in self.valid_categories if c.lower() == category.lower()]
-        if matches:
-            logging.debug('valid category ' + category)
-            return matches[0]
-        else:
-            logging.warning('category ' + category + ' is not normalized')
-            return None
-
 
     def check_attachment(self, attachment):
         """Returns the date and time this email attachment was received in the local timezone"""
@@ -314,103 +315,53 @@ class Poller:
         user = item.sender.email_address
         display_from = None
         subject = item.subject
-        original_subject = subject
-        reported = None
+        pulled = None
         received = None
-        resolved = None
-        assignee = None
-        phishing_button = False
-        needs_metrics = False
-        clicked_or_replied = False
-        replies_communication = False
         message_id = item.message_id
         conversation_id = item.conversation_id.id
         in_reply_to = item.in_reply_to
-        marketing_bulk_tag = False
         text_body = None
 
-        disposition = None
-        reported = item.datetime_received.astimezone(self.tz)
+        pulled = item.datetime_received.astimezone(self.tz)
 
         text_body = item.text_body
 
-        if subject == self.potential_phishing_subject:
-            phishing_button = True
-            for attachment in item.attachments:
-                if isinstance(attachment, ItemAttachment) and isinstance(attachment.item, Message):
-                    received = self.check_attachment(attachment)
-                    original_subject = attachment.item.subject
-                    text_body = attachment.item.text_body
-                    display_from = attachment.item.sender.email_address if attachment.item.sender else None
-                    if not text_body and attachment.item.body:
-                        text_body = html2text.html2text(attachment.item.body)
-        else:
-            if text_body:
-                sent_match = re.search(r'(?ms)Sent: ([^\n\r]*)', text_body)
-                if not sent_match:
-                    sent_match = re.search(r'(?ms)Date: ([^\n\r]*)', text_body)
-                if sent_match:
-                    received = self.try_date_formats(sent_match.group(1),
-                        ['%A, %B %d, %Y %H:%M %p', '%A, %B %d, %Y %H:%M:%S %p'])
-                    if not received:
-                        logging.warning('TODO: handle ' + sent_match.group(1))
-                    else:
-                        # we are making a guess here that the user timezone is Pacific
-                        received = self.tz.localize(received)
+        if text_body:
+            sent_match = re.search(r'(?ms)Sent: ([^\n\r]*)', text_body)
+            if not sent_match:
+                sent_match = re.search(r'(?ms)Date: ([^\n\r]*)', text_body)
+            if sent_match:
+                # the Sent line is populated by trap according to this format
+                received = self.try_date_formats(sent_match.group(1),
+                        [   '%A, %B %d, %Y %I:%M:%S %p' # Tuesday, January 29, 2019 8:53:53 PM 
+                            ])
+                if not received:
+                    logging.warning('TODO: handle ' + sent_match.group(1))
                 else:
-                    for attachment in item.attachments:
-                        if isinstance(attachment, ItemAttachment) and \
-                                isinstance(attachment.item, Message):
-                            received = self.check_attachment(attachment)
-                            break
-                from_match = re.search(r'(?ms)From: ([^\n\r]*)', text_body)
-                if from_match:
-                    display_from = from_match.group(1)
+                    # we are making a guess here that the user timezone is Pacific
+                    received = self.tz.localize(received)
             else:
-                logging.warning('TODO: no item.text_body')
-
-        if item.categories:
-            for c in item.categories:
-                if c.startswith(self.analyst_category_prefix):
-                    assignee = c[len(self.analyst_category_prefix) : ].strip()
-                elif c == 'Needs Metrics':
-                    needs_metrics = True
-                elif c == 'Clicked or Replied':
-                    clicked_or_replied = True
-                elif c == 'Replies/Communication':
-                    replies_communication = True
-                else:
-                    tmp_disp = self.check_disposition(c)
-                    if not tmp_disp:
-                        logging.warning('Ignoring category ' + c)
-                    else:
-                        disposition = tmp_disp
-
-        if disposition or True:
-            resolved = item.last_modified_time.astimezone(self.tz)
-
-        if original_subject and ('[BULK]' in original_subject or '[MARKETING]' in original_subject):
-            marketing_bulk_tag = True
+                for attachment in item.attachments:
+                    if isinstance(attachment, ItemAttachment) and \
+                            isinstance(attachment.item, Message):
+                        received = self.check_attachment(attachment)
+                        break
+            from_match = re.search(r'(?ms)From: ([^\n\r]*)', text_body)
+            if from_match:
+                display_from = from_match.group(1)
+        else:
+            logging.warning('TODO: no item.text_body')
 
         return {
             'ews_id': ews_id,
             'user': user.lower(),
             'display_from': display_from,
-            'reported_subject': subject,
-            'subject': original_subject,
+            'subject': subject,
             'received': received,
-            'reported': reported,
-            'resolved': resolved,
-            'assignee': assignee,
-            'disposition': disposition,
-            'phishing_button': phishing_button,
-            'needs_metrics': needs_metrics,
-            'clicked_or_replied': clicked_or_replied,
-            'replies_communication': replies_communication,
+            'pulled': pulled,
             'message_id': message_id,
             'conversation_id': conversation_id,
-            'in_reply_to': in_reply_to,
-            'marketing_bulk_tag': marketing_bulk_tag
+            'in_reply_to': in_reply_to
             #, 'text_body': text_body
         }
 
@@ -435,24 +386,11 @@ class Poller:
         else:
             return None
 
-    def get_folder_or_create(self, parent_folder, name):
-        """Retrieve child folder, create if necessary and return child folder object."""
-        try:
-            return parent_folder / name
-        except ErrorFolderNotFound as e:
-            logging.warning('Creating folder ' + name)
-            f = Folder(parent=parent_folder, name=name)
-            f.save()
-            return f
-
-
-    def poll(self, domain, user, mailbox, password, folder_name, move_to_completed, reply, max_count, lag_seconds):
+    def poll(self, domain, user, mailbox, password, folder_name, max_count, lag_seconds, from_epoch_and_ids):
         """Poll the mailbox"""
 
         credentials = Credentials(domain + '\\' + user, password)
         account = Account(mailbox, credentials=credentials, autodiscover=True)
-        completed_folder = None
-        dest_folders = {}
 
         if folder_name:
             fc = account.msg_folder_root.glob('**/' + folder_name)
@@ -466,9 +404,45 @@ class Poller:
 
         logging.info('Searching in folder ' + folder.name)
 
+        epoch = datetime.utcfromtimestamp(0).replace(tzinfo=UTC)
+        def unix_time_epoch(row, k):
+            if k in row and row[k]:
+                return (row[k].astimezone(UTC) - epoch).total_seconds()
+            return None
+
         # leave the items in the inbox for some time before processing
         cutoff = datetime.utcnow().replace(tzinfo=UTC).astimezone(self.tz) - timedelta(seconds=lag_seconds)
-        items = folder.all().filter(datetime_received__lt=cutoff).order_by('datetime_received')[0:max_count]
+        # for the start date time, we use the from_epoch, but for the same second we need to skip message ids
+        # in from_epoch_and_ids[1]
+        if from_epoch_and_ids:
+            from_dt = datetime.utcfromtimestamp(from_epoch_and_ids[0]).replace(tzinfo=UTC).astimezone(self.tz)
+            logging.warning('from_epoch ' + str(from_epoch_and_ids[0]) + ' ' + str(from_dt) + ' ' + ';'.join(from_epoch_and_ids[1]))
+            # paginate in chunks of max_count
+            page_start = 0
+            while True:
+                #logging.warning('paginate from [%d to %d) ' % (page_start, page_start+max_count))
+                # items0 may contain messages already processed
+                items0 = folder.all().filter(
+                        datetime_received__range=(from_dt, cutoff)
+                    ).order_by(
+                            'datetime_received', 'message_id'
+                    )[(page_start):(page_start+max_count)]
+                # filter out items that have same epoch as from_epoch_and_ids[0] and message_idin from_epoch_and_ids[1]
+                items0 = list(items0)
+                if len(items0) == 0:
+                    break
+                items = []
+                for item in items0:
+                    item_epoch = (item.datetime_received.astimezone(UTC) - epoch).total_seconds()
+                    if (item_epoch > from_epoch_and_ids[0]) or (item.message_id not in from_epoch_and_ids[1]):
+                        items.append(item)
+
+                # if we have any items left, then we return that
+                if len(items) > 0:
+                    break
+                page_start += max_count
+        else:
+            items = folder.all().filter(datetime_received__lt=cutoff).order_by('datetime_received', 'message_id')[0:max_count]
 
         rows = [self.extract_or_log(item) for item in items ]
 
@@ -480,71 +454,42 @@ class Poller:
 
         total_count = 0
         processed_count = 0
+
+        # Prepare next checkpoint
+        if from_epoch_and_ids:
+            max_epoch = from_epoch_and_ids[0]
+            max_message_ids = from_epoch_and_ids[1]
+        else:
+            max_epoch = None
+            max_message_ids = []
+
         for row in rows:
             #logging.debug(row)
             total_count += 1
-            if reply and row['disposition']:
-                if row['disposition'] == 'Spam/Marketing':
-                    if row['user'] and not row['marketing_bulk_tag']:
-                        item = folder.get(id=row['ews_id'])
-                        if item:
 
-                            body = self.get_body(row)
-                            if body:
-                                logging.info('Replying to ' + row['user'] + ' for disposition ' + row['disposition'])
-                                #item.reply( subject='RE: ' + row['subject'], body=body, to_recipients = [ row['user'] ])
-                                row['replied'] = self.tz_local.localize(EWSDateTime.now()).astimezone(tz=self.tz)
-                                logging.info(row['replied'])
-                    else:
-                        logging.info('No need to reply to ' + row['user'] + ' because [MARKETING]')
-                else:
-                    logging.warning('TODO reply to ' + row['user'] + ' for disposition ' + row['disposition'])
+            processed_count += 1
+            row['_time'] = row['pulled']
 
-            if row and row['needs_metrics'] and (row['disposition'] or row['replies_communication']):
-                processed_count += 1
-                row['_time'] = row['reported']
-                row['processed'] = datetime.utcnow().replace(tzinfo=UTC).astimezone(self.tz)
+            row['processed'] = datetime.utcnow().replace(tzinfo=UTC).astimezone(self.tz)
 
-                epoch = datetime.utcfromtimestamp(0).replace(tzinfo=UTC)
-                def unix_time_epoch(k):
-                    if k in row and row[k]:
-                        return (row[k].astimezone(UTC) - epoch).total_seconds()
-                    return None
-                row['epoch_received'] = unix_time_epoch('received')
-                row['epoch_resolved'] = unix_time_epoch('resolved')
+            row['epoch_received'] = unix_time_epoch(row, 'received')
+            item_epoch = unix_time_epoch(row, 'pulled')
+            if item_epoch > max_epoch:
+                max_epoch = item_epoch
+                max_message_ids = [ row['message_id'] ]
+            else:
+                max_message_ids.append(row['message_id'])
 
-                # remove all null fields because Splunk will show them as 'null'
-                row_no_none = {k: v for k, v in row.items() if v is not None}
-                print json.dumps(row_no_none, default=default, sort_keys=True)
-                #logging.warning(json.dumps(row, default=default, sort_keys=True))
+            # remove all null fields because Splunk will show them as 'null'
+            row_no_none = {k: v for k, v in row.items() if v is not None}
+            print json.dumps(row_no_none, default=default, sort_keys=True)
+            #logging.warning(json.dumps(row, default=default, sort_keys=True))
 
-                if move_to_completed:
-                    row['reported'] = row['reported']
-                    # Figure out name of folder based on reported date
-                    if not completed_folder:
-                        fc = account.msg_folder_root.glob('**/Completed')
-                        if len(fc.folders) == 1:
-                            completed_folder = fc.folders[0]
-                        else:
-                            logging.warning("Multiple 'Completed' folders found, messages will not be moved")
-                            move_to_completed = False
-                    if completed_folder:
-                        parent_folder_name = row['reported'].strftime('%Y')
-                        dest_folder_name = row['reported'].strftime('%m %B %Y')
-                        logging.info('parent_folder_name=%s, dest_folder_name=%s' % (parent_folder_name, dest_folder_name))
-                        dest_folder = dest_folders.get(dest_folder_name)
-                        if not dest_folder:
-                            year_folder = self.get_folder_or_create(completed_folder, parent_folder_name)
-                            if year_folder:
-                                dest_folder = self.get_folder_or_create(year_folder, dest_folder_name)
-                                dest_folders[dest_folder_name] = dest_folder
-                        if dest_folder:
-                            item = folder.get(id=row['ews_id'])
-                            logging.info('Move ' + str(item.sender.email_address) + ' sent at ' + str(row['reported']) + ' to ' + str(dest_folder))
-                            item.move(dest_folder)
-                        else:
-                            logging.warning('Cannot find folder ' + dest_folder_name)
         logging.warning('Processed %d out of %d messages' % (processed_count, total_count))
+        if max_epoch:
+            return (max_epoch, max_message_ids)
+        else:
+            return None
         
 
 def run():
@@ -566,13 +511,7 @@ def run():
         else:
             lag_seconds = 3600
 
-        move_to_completed = False
-        if "move_to_completed" in config:
-            if config["move_to_completed"].lower() == "true" or config["move_to_completed"] == 1:
-                move_to_completed = True
-
         session_key = config["session_key"]
-        reply = False
         
         if session_key:
 
@@ -584,14 +523,18 @@ def run():
                 clear_password = get_password(session_key, username)
                 logging.info("Using user %s" % username)
 
+                from_epoch_and_ids = load_checkpoint(config)
+
                 poller = Poller()
-                poller.poll(domain, username, mailbox, clear_password,
+                max_epoch_and_ids = poller.poll(domain, username, mailbox, clear_password,
                     folder,
-                    move_to_completed, 
-                    reply,
                     max_count,
-                    lag_seconds
+                    lag_seconds,
+                    from_epoch_and_ids
                     )
+                if max_epoch_and_ids:
+                    save_checkpoint(config, max_epoch_and_ids[0], max_epoch_and_ids[1])
+
             except Exception as e:
                 logging.exception("Error while polling: %s" % str(e))
 
