@@ -259,7 +259,7 @@ class Poller:
         'Legitimate Partner Emails', 'Pre-Phishing', 'Spearphishing', 'Whaling', 'Phishing with Links',
         'Phishing with Links and Attachments', 'Phishing with Attachments', 'Spam/Marketing', 'Scam',
         'Replies/Communication', 'Phishing Campaign', 'Disregard/Accidental Report',
-        'Disregard/Request cannot be fulfilled']
+        'Disregard/Request cannot be fulfilled', 'Disregard/Service Request or Test']
 
     potential_phishing_subject = 'POTENTIAL PHISHING'
 
@@ -356,7 +356,8 @@ class Poller:
                         logging.warning('TODO: handle ' + sent_match.group(1))
                     else:
                         # we are making a guess here that the user timezone is Pacific
-                        received = self.tz.localize(received)
+                        if received.tzinfo is None or received.tzinfo.utcoffset(received) is None:
+                            received = self.tz.localize(received)
                 else:
                     for attachment in item.attachments:
                         if isinstance(attachment, ItemAttachment) and \
