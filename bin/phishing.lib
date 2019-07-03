@@ -259,7 +259,7 @@ class Poller:
         'Legitimate Partner Emails', 'Pre-Phishing', 'Spearphishing', 'Whaling', 'Phishing with Links',
         'Phishing with Links and Attachments', 'Phishing with Attachments', 'Spam/Marketing', 'Scam',
         'Replies/Communication', 'Phishing Campaign', 'Disregard/Accidental Report',
-        'Disregard/Request cannot be fulfilled', 'Disregard/Service Request or Test']
+        'Disregard/Request cannot be fulfilled', 'Disregard/Service Request or Test', 'Vishing']
 
     potential_phishing_subject = 'POTENTIAL PHISHING'
 
