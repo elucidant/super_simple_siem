@@ -2,6 +2,7 @@
 <nav>
 	<view name="alerts" default="true"/>
 	<view name="dashboards"/>
+	<view name="search"/>
 	<view name="getting_started"/>
 	<view name="documentation"/>
 </nav>
