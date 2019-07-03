@@ -31,11 +31,11 @@ move_to_completed = [true|false]
 mailbox = <value>
 *mailbox to monitor (e.g. proofpointdetection.serviceaccount@example.com)
 
-domain = <value>
-*Domain name
+server = <value>
+*Server name, leave empty for autodiscover, use outlook.office365.com for O365
 
 username = <value>
-*Username to used to access mailbox
+*Username to used to access mailbox, prefix with domain
 
 password = <value>
 *Password for username

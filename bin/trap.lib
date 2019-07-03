@@ -62,14 +62,15 @@ SCHEME = """<scheme>
                 <description>mailbox to monitor (e.g. proofpointdetection.serviceaccount@example.com)</description>
             </arg>
 
-            <arg name="domain">
-                <title>Domain</title>
-                <description>domain name</description>
+            <arg name="server">
+                <title>Server</title>
+                <description>server (e.g. outlook.office365.com or leave empty for autodiscover)</description>
+                <required_on_create>false</required_on_create>
             </arg>
 
             <arg name="username">
                 <title>Username</title>
-                <description>username to access mailbox</description>
+                <description>username to access mailbox, prefix with domain if needed</description>
             </arg>
 
             <arg name="password">
@@ -200,7 +201,6 @@ def get_config():
         # just some validation: make sure these keys are present (required)
         validate_conf(config, "name")
         validate_conf(config, "mailbox")
-        validate_conf(config, "domain")
         validate_conf(config, "username")
         validate_conf(config, "password")
         validate_conf(config, "checkpoint_dir")
@@ -386,11 +386,15 @@ class Poller:
         else:
             return None
 
-    def poll(self, domain, user, mailbox, password, folder_name, max_count, lag_seconds, from_epoch_and_ids):
+    def poll(self, server, user, mailbox, password, folder_name, max_count, lag_seconds, from_epoch_and_ids):
         """Poll the mailbox"""
 
-        credentials = Credentials(domain + '\\' + user, password)
-        account = Account(mailbox, credentials=credentials, autodiscover=True)
+        credentials = Credentials(user, password)
+        if server:
+            config = Configuration(server=server, credentials=credentials)
+            account = Account(mailbox, credentials=credentials, config=config)
+        else:
+            account = Account(mailbox, credentials=credentials, autodiscover=True)
 
         if folder_name:
             fc = account.msg_folder_root.glob('**/' + folder_name)
@@ -414,6 +418,7 @@ class Poller:
         cutoff = datetime.utcnow().replace(tzinfo=UTC).astimezone(self.tz) - timedelta(seconds=lag_seconds)
         # for the start date time, we use the from_epoch, but for the same second we need to skip message ids
         # in from_epoch_and_ids[1]
+        items = []
         if from_epoch_and_ids:
             from_dt = datetime.utcfromtimestamp(from_epoch_and_ids[0]).replace(tzinfo=UTC).astimezone(self.tz)
             logging.warning('from_epoch ' + str(from_epoch_and_ids[0]) + ' ' + str(from_dt) + ' ' + ';'.join(from_epoch_and_ids[1]))
@@ -497,7 +502,10 @@ def run():
 
         name = config["name"]
 	mailbox = config["mailbox"]
-	domain = config["domain"]
+        if "server" in config:
+            server = config["server"]
+        else:
+            server = None
 	username = config["username"]
 	password = config["password"]
 	folder = config.get("folder")
@@ -526,7 +534,7 @@ def run():
                 from_epoch_and_ids = load_checkpoint(config)
 
                 poller = Poller()
-                max_epoch_and_ids = poller.poll(domain, username, mailbox, clear_password,
+                max_epoch_and_ids = poller.poll(server, username, mailbox, clear_password,
                     folder,
                     max_count,
                     lag_seconds,
