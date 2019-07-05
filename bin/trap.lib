@@ -245,13 +245,17 @@ def validate_config(username, password):
         print_error("Invalid configuration specified: %s" % str(e))
         sys.exit(1)	
 
+def checkpoint_file(config):
+    prefix = re.sub(r'[^0-9A-Za-z_-]+', '_', config['name'])
+    return os.path.join(config['checkpoint_dir'], prefix + '_epoch')
+
 def load_checkpoint(config):
     """
     Load the most recent epoch and message_ids for this second processed.
     Return an (epoch, [message_id]) tuple to start ingesting from or None.
     Config is the config provided to the script.
     """
-    filename = os.path.join(config["checkpoint_dir"], 'epoch')
+    filename = checkpoint_file(config)
     if os.path.exists(filename):
         with open(filename, 'r') as f:
             content = f.read().splitlines()
@@ -265,7 +269,7 @@ def save_checkpoint(config, epoch, message_ids):
     """
     Save the checkpoint (the last epoch processed as well as all message ids for that epoch).
     """
-    filename = os.path.join(config["checkpoint_dir"], 'epoch')
+    filename = checkpoint_file(config)
     with open(filename, 'w') as f:
         f.write(str(int(epoch)) + '\n')
         for message_id in message_ids:
