@@ -88,15 +88,21 @@ SCHEME = """<scheme>
                 <description>Cap number of emails retrieve per invocation, defaults to 100 if not provided</description>
             </arg>
 
-            <arg name="lag_seconds">
-                <title>Processing Delay</title>
-                <description>Minimum number of seconds from time reported before message is considered for processing, defaults to 3600</description>
+            <arg name="alert_lag_seconds">
+                <title>Processing Delay for alerting</title>
+                <description>Minimum number of seconds from time reported before message is considered for alerting, defaults to 600. Alerting events have type='alert' and their _time is time the event is inserted by the modular input script.</description>
+            </arg>
+
+            <arg name="metrics_lag_seconds">
+                <title>Processing Delay for metrics and moving the message</title>
+                <description>Minimum number of seconds from time reported before message is considered for metrics processing, defaults to 3600. Metrics event have type='metrics' and their _time is the time the email was received.</description>
             </arg>
 
             <arg name="move_to_completed">
                 <title>Move to Completed folder</title>
                 <description>If true, move to completed folders, defaults to false.</description>
             </arg>
+
         </args>
     </endpoint>
 </scheme>
@@ -106,7 +112,7 @@ def encrypt_password(username, password, session_key):
     import splunklib.client as client
     args = {'token':session_key}
     service = client.connect(**args)
-    
+
     try:
         # If the credential already exists, delete it.
         for storage_password in service.storage_passwords:
@@ -127,13 +133,13 @@ def mask_password(full_input_name, session_key, username):
         service = client.connect(**args)
         kind, input_name = full_input_name.split("://")
         item = service.inputs.__getitem__((input_name, kind))
-        
+
         kwargs = {
             "username": username,
             "password": MASK
         }
         item.update(**kwargs).refresh()
-            
+
     except Exception as e:
         raise Exception("Error updating inputs.conf: %s" % str(e))
 
@@ -142,13 +148,13 @@ def get_password(session_key, username):
     args = {'token':session_key}
     service = client.connect(**args)
 
-    # Retrieve the password from the storage/passwords endpoint	
+    # Retrieve the password from the storage/passwords endpoint
     for storage_password in service.storage_passwords:
         if storage_password.username == username:
             return storage_password.content.clear_password
 
 def do_scheme():
-	print SCHEME
+    print SCHEME
 
 # prints XML error data to be consumed by Splunk
 def print_error(s):
@@ -247,7 +253,38 @@ def validate_config(username, password):
         pass
     except Exception,e:
         print_error("Invalid configuration specified: %s" % str(e))
-        sys.exit(1)	
+        sys.exit(1)
+
+
+def checkpoint_file(config):
+    prefix = re.sub(r'[^0-9A-Za-z_-]+', '_', config['name'])
+    return os.path.join(config['checkpoint_dir'], prefix + '_epoch')
+
+def load_checkpoint(config):
+    """
+    Load the most recent epoch and message_ids for this second processed.
+    Return an (epoch, [message_id]) tuple to start ingesting from or None.
+    Config is the config provided to the script.
+    """
+    filename = checkpoint_file(config)
+    if os.path.exists(filename):
+        with open(filename, 'r') as f:
+            content = f.read().splitlines()
+            epoch = int(content[0])
+            message_ids = content[1:]
+            return (epoch, message_ids)
+    else:
+        return None
+
+def save_checkpoint(config, epoch, message_ids):
+    """
+    Save the checkpoint (the last epoch processed as well as all message ids for that epoch).
+    """
+    filename = checkpoint_file(config)
+    with open(filename, 'w') as f:
+        f.write(str(int(epoch)) + '\n')
+        for message_id in message_ids:
+            f.write(message_id + '\n')
 
 
 # Put all EWS related function into one class to control import
@@ -447,7 +484,8 @@ class Poller:
             return f
 
 
-    def poll(self, domain, user, mailbox, password, folder_name, move_to_completed, reply, max_count, lag_seconds):
+    def poll(self, domain, user, mailbox, password, folder_name, move_to_completed, reply, max_count,
+            alert_lag_seconds, metrics_lag_seconds, from_epoch_and_ids):
         """Poll the mailbox"""
 
         credentials = Credentials(domain + '\\' + user, password)
@@ -468,8 +506,11 @@ class Poller:
         logging.info('Searching in folder ' + folder.name)
 
         # leave the items in the inbox for some time before processing
-        cutoff = datetime.utcnow().replace(tzinfo=UTC).astimezone(self.tz) - timedelta(seconds=lag_seconds)
-        items = folder.all().filter(datetime_received__lt=cutoff).order_by('datetime_received')[0:max_count]
+        # order by datetime_received and message_id so that we don't insert duplicate alerts
+        # (the max_count could cut off processing of messages at the same datetime_received)
+        cutoff = datetime.utcnow().replace(tzinfo=UTC).astimezone(self.tz) - timedelta(seconds=alert_lag_seconds)
+        items = folder.all().filter(datetime_received__lt=cutoff).order_by(
+                'datetime_received', 'message_id')[0:max_count]
 
         rows = [self.extract_or_log(item) for item in items ]
 
@@ -481,9 +522,56 @@ class Poller:
 
         total_count = 0
         processed_count = 0
+        # max_epoch should be the most recent epoch for alert
+        # max_message_ids should be all messages ids for which alerts have already been created for max_epoch
+        if from_epoch_and_ids:
+            max_epoch = from_epoch_and_ids[0]
+            max_message_ids = from_epoch_and_ids[1]
+            logging.warning('from_epoch ' + str(from_epoch_and_ids[0]) + ' ' + ';'.join(from_epoch_and_ids[1]))
+        else:
+            max_epoch = None
+            max_message_ids = []
+
+        # epoch used to compute if the current message is past our checkpoint
+        epoch = datetime.utcfromtimestamp(0).replace(tzinfo=UTC)
+        metrics_cutoff = datetime.utcnow().replace(tzinfo=UTC).astimezone(self.tz) - timedelta(seconds=metrics_lag_seconds)
+
         for row in rows:
             #logging.debug(row)
             total_count += 1
+
+            def unix_time_epoch(k):
+                if k in row and row[k]:
+                    return (row[k].astimezone(UTC) - epoch).total_seconds()
+                return None
+
+            item_epoch = unix_time_epoch('received')
+            if not from_epoch_and_ids or (
+                    (item_epoch > from_epoch_and_ids[0]) or (item.message_id not in from_epoch_and_ids[1])
+                ):
+                inserted = self.tz_local.localize(EWSDateTime.now()).replace(microsecond=0).astimezone(tz=self.tz)
+                row_no_none = {
+                    '_time': inserted,
+                    'type': 'alert',
+                    'conversation_id': row['conversation_id'],
+                    'display_from': row['display_from'],
+                    'epoch_received': unix_time_epoch('received'),
+                    'ews_id': row['ews_id'],
+                    'in_reply_to': row['in_reply_to'],
+                    'message_id': row['message_id'],
+                    'received': row['received'],
+                    'reported_subject': row['reported_subject'],
+                    'subject': row['subject'],
+                    'user': row['user']
+                }
+                row_no_none = {k: v for k, v in row_no_none.items() if v is not None}
+                print json.dumps(row_no_none, default=default, sort_keys=True)
+                if item_epoch > max_epoch:
+                    max_epoch = item_epoch
+                    max_message_ids = [ row['message_id'] ]
+                else:
+                    max_message_ids.append(row['message_id'])
+
             if reply and row['disposition']:
                 if row['disposition'] == 'Spam/Marketing':
                     if row['user'] and not row['marketing_bulk_tag']:
@@ -501,16 +589,13 @@ class Poller:
                 else:
                     logging.warning('TODO reply to ' + row['user'] + ' for disposition ' + row['disposition'])
 
-            if row and row['needs_metrics'] and (row['disposition'] or row['replies_communication']):
+            # only consider row before the metrics_cutoff
+            if row and row['reported'] <= metrics_cutoff and row['needs_metrics'] and (row['disposition'] or row['replies_communication']):
                 processed_count += 1
                 row['_time'] = row['reported']
+                row['type'] = 'metrics'
                 row['processed'] = datetime.utcnow().replace(tzinfo=UTC).astimezone(self.tz)
 
-                epoch = datetime.utcfromtimestamp(0).replace(tzinfo=UTC)
-                def unix_time_epoch(k):
-                    if k in row and row[k]:
-                        return (row[k].astimezone(UTC) - epoch).total_seconds()
-                    return None
                 row['epoch_received'] = unix_time_epoch('received')
                 row['epoch_resolved'] = unix_time_epoch('resolved')
 
@@ -546,55 +631,72 @@ class Poller:
                         else:
                             logging.warning('Cannot find folder ' + dest_folder_name)
         logging.warning('Processed %d out of %d messages' % (processed_count, total_count))
-        
+
+        if max_epoch:
+            return (max_epoch, max_message_ids)
+        else:
+            return None
 
 def run():
-	config = get_config()
+    config = get_config()
 
-        name = config["name"]
-	mailbox = config["mailbox"]
-	domain = config["domain"]
-	username = config["username"]
-	password = config["password"]
-	folder = config.get("folder")
-        if "max_count" in config:
-            max_count = int(config["max_count"])
-        else:
-            max_count = 100
+    name = config["name"]
+    mailbox = config["mailbox"]
+    domain = config["domain"]
+    username = config["username"]
+    password = config["password"]
+    folder = config.get("folder")
+    if "max_count" in config:
+        max_count = int(config["max_count"])
+    else:
+        max_count = 100
 
-        if "lag_seconds" in config:
-            lag_seconds = int(config["lag_seconds"])
-        else:
-            lag_seconds = 3600
+    if "alert_lag_seconds" in config:
+        alert_lag_seconds = int(config["alert_lag_seconds"])
+    else:
+        alert_lag_seconds = 600
 
-        move_to_completed = False
-        if "move_to_completed" in config:
-            if config["move_to_completed"].lower() == "true" or config["move_to_completed"] == 1:
-                move_to_completed = True
+    if "metrics_lag_seconds" in config:
+        metrics_lag_seconds = int(config["metrics_lag_seconds"])
+    else:
+        metrics_lag_seconds = 3600
 
-        session_key = config["session_key"]
-        reply = False
-        
-        if session_key:
+    move_to_completed = False
+    if "move_to_completed" in config:
+        if config["move_to_completed"].lower() == "true" or config["move_to_completed"] == 1:
+            move_to_completed = True
 
-            try:
-                if password != MASK:
-                    logging.info("Encrypting password for username=%s" % username)
-                    encrypt_password(username, password, session_key)
-                    mask_password(name, session_key, username)
-                clear_password = get_password(session_key, username)
-                logging.info("Using user %s" % username)
+    session_key = config["session_key"]
+    reply = False
 
-                poller = Poller()
-                poller.poll(domain, username, mailbox, clear_password,
-                    folder,
-                    move_to_completed, 
-                    reply,
-                    max_count,
-                    lag_seconds
-                    )
-            except Exception as e:
-                logging.exception("Error while polling: %s" % str(e))
+    if session_key:
+
+        try:
+            if password != MASK:
+                logging.info("Encrypting password for username=%s" % username)
+                encrypt_password(username, password, session_key)
+                mask_password(name, session_key, username)
+            clear_password = get_password(session_key, username)
+            logging.info("Using user %s" % username)
+
+            from_epoch_and_ids = load_checkpoint(config)
+
+            poller = Poller()
+            max_epoch_and_ids = poller.poll(domain, username, mailbox, clear_password,
+                folder,
+                move_to_completed,
+                reply,
+                max_count,
+                alert_lag_seconds,
+                metrics_lag_seconds,
+                from_epoch_and_ids
+                )
+
+            if max_epoch_and_ids:
+                save_checkpoint(config, max_epoch_and_ids[0], max_epoch_and_ids[1])
+
+        except Exception as e:
+            logging.exception("Error while polling: %s" % str(e))
 
 
 if __name__ == '__main__':

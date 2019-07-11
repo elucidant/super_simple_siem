@@ -19,11 +19,16 @@ folder = <value>
 max_count = <integer>
 *Maximum number of emails to retrieve per invocation, defaults to 100
 
-lag_seconds = <integer>
-*How many seconds to wait from the time the message was reported before the message is considered for processing, defaults to 3600
+alert_lag_seconds = <integer>
+*How many seconds to wait from the time the message was reported before the message is considered for alert processing, defaults to 600
+
+metrics_lag_seconds = <integer>
+*How many seconds to wait from the time the message was reported before the message is considered for metrics processing, defaults to 3600
 
 move_to_completed = [true|false]
 *If true moves the message to the 'Completed' folder which must exist, defaults to false.
+
+
 
 [trap://default]
 *This is how the phishing input is configured
