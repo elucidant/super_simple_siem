@@ -545,7 +545,7 @@ class Poller:
                     return (row[k].astimezone(UTC) - epoch).total_seconds()
                 return None
 
-            item_epoch = unix_time_epoch('received')
+            item_epoch = unix_time_epoch('reported')
             if not from_epoch_and_ids or (
                     (item_epoch > from_epoch_and_ids[0]) or (item.message_id not in from_epoch_and_ids[1])
                 ):
@@ -556,10 +556,12 @@ class Poller:
                     'conversation_id': row['conversation_id'],
                     'display_from': row['display_from'],
                     'epoch_received': unix_time_epoch('received'),
+                    'epoch_reported': unix_time_epoch('reported'),
                     'ews_id': row['ews_id'],
                     'in_reply_to': row['in_reply_to'],
                     'message_id': row['message_id'],
                     'received': row['received'],
+                    'reported': row['reported'],
                     'reported_subject': row['reported_subject'],
                     'subject': row['subject'],
                     'user': row['user']
@@ -605,7 +607,6 @@ class Poller:
                 #logging.warning(json.dumps(row, default=default, sort_keys=True))
 
                 if move_to_completed:
-                    row['reported'] = row['reported']
                     # Figure out name of folder based on reported date
                     if not completed_folder:
                         fc = account.msg_folder_root.glob('**/Completed')
