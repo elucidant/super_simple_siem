@@ -545,9 +545,10 @@ class Poller:
                     return (row[k].astimezone(UTC) - epoch).total_seconds()
                 return None
 
-            item_epoch = unix_time_epoch('reported')
-            if not from_epoch_and_ids or (
-                    (item_epoch > from_epoch_and_ids[0]) or (item.message_id not in from_epoch_and_ids[1])
+            item_epoch = int(unix_time_epoch('reported'))
+            if not max_epoch or (
+                    (item_epoch > max_epoch) or
+                    ((item_epoch == max_epoch) and (row['message_id'] not in max_message_ids))
                 ):
                 inserted = self.tz_local.localize(EWSDateTime.now()).replace(microsecond=0).astimezone(tz=self.tz)
                 row_no_none = {
