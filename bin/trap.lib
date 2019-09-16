@@ -343,7 +343,8 @@ class Poller:
                     logging.warning('TODO: handle ' + sent_match.group(1))
                 else:
                     # we are making a guess here that the user timezone is Pacific
-                    received = self.tz.localize(received)
+                    if received.tzinfo is None:
+                        received = self.tz.localize(received)
             else:
                 for attachment in item.attachments:
                     if isinstance(attachment, ItemAttachment) and \
