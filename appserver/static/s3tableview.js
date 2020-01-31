@@ -338,7 +338,9 @@ define([
             
             function renderData(data, type, row, meta) {
                 var alert = JSON.parse(data);
-                return JSON.stringify(alert.data, null, 2);
+                var j = JSON.stringify(alert.data, null, 2);
+                var safeJson = _.template("<%- j %>", {j: j});
+                return safeJson;
             }
 
             this.$el.html('<table id="' + this.datatableId() + '" class="display table-condensed alert-table" width="100%"></table>');
