@@ -27,12 +27,15 @@ import re
 import dateparser
 import html2text
 from datetime import datetime, timedelta
-from exchangelib import DELEGATE, IMPERSONATION, Account, Credentials, ServiceAccount, \
+from exchangelib import DELEGATE, IMPERSONATION, Account, Credentials, \
     EWSDateTime, EWSTimeZone, Configuration, NTLM, GSSAPI, CalendarItem, Message, Mailbox, \
     Attendee, Q, ExtendedProperty, FileAttachment, ItemAttachment, HTMLBody, Build, Version, \
     FolderCollection, UTC, Folder
 from exchangelib.errors import ErrorFolderNotFound
+from exchangelib.protocol import BaseProtocol, NoVerifyHTTPAdapter
 
+# Tell exchangelib to use this adapter class instead of the default
+BaseProtocol.HTTP_ADAPTER_CLS = NoVerifyHTTPAdapter
 
 #set up logging suitable for splunkd comsumption
 logging.root
