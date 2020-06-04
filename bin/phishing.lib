@@ -33,9 +33,11 @@ from exchangelib import DELEGATE, IMPERSONATION, Account, Credentials, \
     FolderCollection, UTC, Folder
 from exchangelib.errors import ErrorFolderNotFound
 from exchangelib.protocol import BaseProtocol, NoVerifyHTTPAdapter
+import urllib3
 
 # Tell exchangelib to use this adapter class instead of the default
 BaseProtocol.HTTP_ADAPTER_CLS = NoVerifyHTTPAdapter
+urllib3.disable_warnings()
 
 #set up logging suitable for splunkd comsumption
 logging.root
