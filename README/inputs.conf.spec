@@ -1,6 +1,9 @@
 [phishing://default]
 *This is how the phishing input is configured
 
+server = <value>
+*Server name, leave empty for autodiscover, use outlook.office365.com for O365
+
 mailbox = <value>
 *mailbox to monitor (e.g. phishing@example.com)
 

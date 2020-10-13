@@ -62,6 +62,12 @@ SCHEME = """<scheme>
                 <description>Name parameter description.</description>
             </arg>
 
+            <arg name="server">
+                <title>Server</title>
+                <description>server (e.g. outlook.office365.com or leave empty for autodiscover)</description>
+                <required_on_create>false</required_on_create>
+            </arg>
+
             <arg name="mailbox">
                 <title>Mailbox</title>
                 <description>mailbox to monitor (e.g. phishing@example.com)</description>
@@ -70,6 +76,7 @@ SCHEME = """<scheme>
             <arg name="domain">
                 <title>Domain</title>
                 <description>domain name</description>
+                <required_on_create>false</required_on_create>
             </arg>
 
             <arg name="username">
@@ -215,7 +222,6 @@ def get_config():
         # just some validation: make sure these keys are present (required)
         validate_conf(config, "name")
         validate_conf(config, "mailbox")
-        validate_conf(config, "domain")
         validate_conf(config, "username")
         validate_conf(config, "password")
         validate_conf(config, "checkpoint_dir")
@@ -490,12 +496,21 @@ class Poller:
             return f
 
 
-    def poll(self, domain, user, mailbox, password, folder_name, move_to_completed, reply, max_count,
+    def poll(self, server, domain, user, mailbox, password, folder_name, move_to_completed, reply, max_count,
             alert_lag_seconds, metrics_lag_seconds, from_epoch_and_ids):
         """Poll the mailbox"""
 
-        credentials = Credentials(domain + '\\' + user, password)
-        account = Account(mailbox, credentials=credentials, autodiscover=True)
+        if domain:
+            credentials = Credentials(domain + '\\' + user, password)
+        else:
+            credentials = Credentials(user, password)
+
+        if server:
+            config = Configuration(server=server, credentials=credentials)
+            account = Account(mailbox, credentials=credentials, config=config)
+        else:
+            account = Account(mailbox, credentials=credentials, autodiscover=True)
+
         completed_folder = None
         dest_folders = {}
 
@@ -649,8 +664,15 @@ def run():
     config = get_config()
 
     name = config["name"]
+    if "server" in config:
+        server = config["server"]
+    else:
+        server = None
     mailbox = config["mailbox"]
-    domain = config["domain"]
+    if "domain" in config:
+        domain = config["domain"]
+    else:
+        domain = None
     username = config["username"]
     password = config["password"]
     folder = config.get("folder")
@@ -690,7 +712,7 @@ def run():
             from_epoch_and_ids = load_checkpoint(config)
 
             poller = Poller()
-            max_epoch_and_ids = poller.poll(domain, username, mailbox, clear_password,
+            max_epoch_and_ids = poller.poll(server, domain, username, mailbox, clear_password,
                 folder,
                 move_to_completed,
                 reply,
