@@ -296,8 +296,7 @@ define([
                 <% } %> \
                 <div> \
                         <textarea id="notes-<%- alert._key %>" rows="5" data-id="<%- alert._key %>" data-action="notes-enabler" style="width: 50%" placeholder="Notes provided here will be used on Assign/Close/Add Notes actions"></textarea> \
-                    <button class="btn btn-primary submit" data-id="<%- alert._key %>" data-action="notes" disabled=true>Add Notes</button> \
-                    <button class="btn btn-primary submit" data-id="<%- alert._key %>" data-action="page" disabled=true>Page On-Call</button> \
+                    <button class="btn btn-primary submit" data-id="<%- alert._key %>" data-action="notes" data-current-analyst="<%- alert.analyst %>" disabled=true>Add Notes</button> \
                 </div> \
                 <table class="table table-condensed table-embed table-expanded table-dotted"> \
                 <thead> \
@@ -498,28 +497,12 @@ define([
                 });
             });
 
-            table.on('click', "[data-action='page']", function(el) {
-                var key = $(el.currentTarget).attr('data-id');
-                var notes = $('#notes-' + key).val();
-                var username = Splunk.util.getConfigValue("USERNAME");
-                var keys = that.keysFromApplyAll(key);
-                var entry = {
-                    time: new Date().getTime()/1000,
-                    action: 'page',
-                    notes: notes,
-                    data: {},
-                    analyst: username
-                };
-                that.updateAlerts(keys, undefined, undefined, undefined, entry, function(errs, responses) {
-                    if (errs.length > 0) console.log('There were errors in updateAlerts', errs);
-                    if (responses.length > 0) manager.startSearch();
-                });
-            });
-
             table.on('click', "[data-action='notes']", function(el) {
                 var key = $(el.currentTarget).attr('data-id');
+                var currentAnalyst = $(el.currentTarget).attr('data-current-analyst');
                 var notes = $('#notes-' + key).val();
                 var username = Splunk.util.getConfigValue("USERNAME");
+                var updatedAnalyst = currentAnalyst == "" ? username : undefined;
                 var keys = that.keysFromApplyAll(key);
                 var entry = {
                     time: new Date().getTime()/1000,
@@ -528,7 +511,7 @@ define([
                     data: {},
                     analyst: username
                 };
-                that.updateAlerts(keys, undefined, undefined, undefined, entry, function(errs, responses) {
+                that.updateAlerts(keys, undefined, updatedAnalyst, undefined, entry, function(errs, responses) {
                     if (errs.length > 0) console.log('There were errors in updateAlerts', errs);
                     if (responses.length > 0) manager.startSearch();
                 });
@@ -565,8 +548,6 @@ define([
                 var $text = $(el.currentTarget);
                 var key = $text.attr('data-id');
                 $('button[data-action=notes][data-id=' + key + ']')
-                    .prop('disabled', $text.val().trim().length <= 0);
-                $('button[data-action=page][data-id=' + key + ']')
                     .prop('disabled', $text.val().trim().length <= 0);
             });
 

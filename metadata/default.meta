@@ -31,11 +31,6 @@ access = read : [ * ], write : [ admin ]
 export = system
 owner = nobody
 
-[commands/decodeheader]
-access = read : [ * ], write : [ admin ]
-export = system
-owner = nobody
-
 [collections/alerts]
 owner = admin
 access = read : [ * ], write : [ admin, power, user ]
@@ -56,9 +51,6 @@ owner = admin
 [views/documentation]
 owner = admin
 
-[views/health_stats]
-owner = admin
-
 [datamodels/alertsmodel]
 export = none
 owner = admin
@@ -77,14 +69,6 @@ owner = nobody
 [savedsearches/super_simple_siem_test_alert]
 export = none
 owner = admin
-
-[transforms/whitelist]
-export = system
-owner = nobody
-
-[lookups/whitelist.csv]
-export = system
-owner = nobody
 
 [alert_actions/super_simple_siem_alert]
 export = system

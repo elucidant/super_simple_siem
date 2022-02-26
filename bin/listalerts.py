@@ -115,7 +115,7 @@ class ListAlertsCommand(GeneratingCommand):
             if self.data:
                 event[self.data] = json.dumps(record['data'])
             if self.data_prefix is not None:
-                for key, value in data.iteritems():
+                for key, value in data.items():
                     event[self.data_prefix + key] = value
             if self.json_field:
                 event[self.json_field] = json.dumps(record)

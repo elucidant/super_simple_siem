@@ -86,7 +86,7 @@ class AlertCollection:
         if event_time in record and entity in record:
             sid = search_context.searchinfo.sid
 
-            alert_data = {self.fix_field_name(key): value for key, value in record.iteritems() if key[0] != '_'}
+            alert_data = {self.fix_field_name(key): value for key, value in record.items() if key[0] != '_'}
             alert_record = { 'data': alert_data }
             alert_record['time'] = float(record[event_time])
             alert_record['entity'] = record[entity]
@@ -192,7 +192,7 @@ class AlertCollection:
             logger=None
             ):
 
-        alert_data = {self.fix_field_name(key): value for key, value in record.iteritems()}
+        alert_data = {self.fix_field_name(key): value for key, value in record.items()}
         alert_record = { 'data': alert_data }
 
         if event_time in record:
@@ -236,7 +236,7 @@ class AlertCollection:
     # CSV file with a single json column with the json as exported by | listalerts json=json
     def csv_import(self, file_of_json_inside_csv):
         import csv
-        with open(file_of_json_inside_csv, 'rb') as csvfile:
+        with open(file_of_json_inside_csv, 'r') as csvfile:
             rows = csv.reader(csvfile)
             for row in rows:
                 if row[0] != 'json':

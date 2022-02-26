@@ -4,28 +4,31 @@ import json, logging, sys, gzip, csv
 from logging import getLogger
 from alert_collection import AlertCollection
 
+logger = getLogger('super_simple_siem_alert')
+
 def parse_mv_field(s):
+    # s appears to be utf-8 encoded
+    # need to work on unicode char set and assume we need to give back utf-8
     res = []
     if (not s) or (s[0] != '$' and s[-1] != '$') :
         return res
     else:
         f = ''
         i = 1 # first and last char will be $
-        while i < len(s) - 1:
-            if s[i:(i+2)] == '$$':
+        ss = s.decode('utf-8')
+        while i < len(ss) - 1:
+            if ss[i:(i+2)] == '$$':
                 f += '$'
                 i += 2
-            elif s[i:(i+3)] == '$;$':
-                res.append(f)
+            elif ss[i:(i+3)] == '$;$':
+                res.append(f.encode('utf-8'))
                 f = ''
                 i += 3
             else:
-                f += s[i]
+                f += ss[i]
                 i += 1
-        res.append(f)
+        res.append(f.encode('utf-8'))
         return res
-
-logger = getLogger('super_simple_siem_alert')
 
 payload = json.loads(sys.stdin.read())
 
@@ -37,7 +40,7 @@ alerts = AlertCollection(session_key)
 
 results_file = payload['results_file']
 
-with gzip.open(results_file, 'rb') as f:
+with gzip.open(results_file, 'rt') as f:
     file_content = csv.reader(f)
     lines = list(file_content)
     header = lines[0]
@@ -49,14 +52,17 @@ with gzip.open(results_file, 'rb') as f:
 
     for row in rows:
         record_all = dict(zip(header, row))
-        record = {k:v for k,v in record_all.iteritems() if not k.startswith('__mv_')}
+        record = {k:v for k,v in record_all.items() if not k.startswith('__mv_')}
         # if fields has a multi-value version,  replace with array
         for k in record.keys():
             mvname = '__mv_' + k
             if (mvname in record_all) and (record_all[mvname]):
-                mvvalue = parse_mv_field(record_all[mvname])
-                if mvvalue:
-                    record[k] = mvvalue
+                try:
+                    mvvalue = parse_mv_field(record_all[mvname])
+                    if mvvalue:
+                        record[k] = mvvalue
+                except:
+                    logger.error('Could not parse multivalue ' + str(record_all[mvname]))
 
         alerts.insert_custom_alert(
             record = record,

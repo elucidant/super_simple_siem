@@ -14,7 +14,9 @@
 
 """Utility module shared by the SDK examples & unit tests."""
 
+from __future__ import absolute_import
 from utils.cmdopts import *
+from splunklib import six
 
 def config(option, opt, value, parser):
     assert opt == "--config"
@@ -67,10 +69,20 @@ RULES_SPLUNK = {
         'flags': ["--version"],
         'default': None,
         'help': 'Ignore. Used by JavaScript SDK.'
+    },
+    'splunkToken': {
+        'flags': ["--bearerToken"],
+        'default': None,
+        'help': 'Bearer token for authentication'
+    },
+    'token': {
+        'flags': ["--sessionKey"],
+        'default': None,
+        'help': 'Session key for authentication'
     }
 }
 
-FLAGS_SPLUNK = RULES_SPLUNK.keys()
+FLAGS_SPLUNK = list(RULES_SPLUNK.keys())
 
 # value: dict, args: [(dict | list | str)*]
 def dslice(value, *args):
@@ -82,15 +94,15 @@ def dslice(value, *args):
     result = {}
     for arg in args:
         if isinstance(arg, dict):
-            for k, v in arg.iteritems():
-                if value.has_key(k): 
+            for k, v in six.iteritems(arg):
+                if k in value: 
                     result[v] = value[k]
         elif isinstance(arg, list):
             for k in arg:
-                if value.has_key(k): 
+                if k in value: 
                     result[k] = value[k]
         else:
-            if value.has_key(arg): 
+            if arg in value: 
                 result[arg] = value[arg]
     return result
 

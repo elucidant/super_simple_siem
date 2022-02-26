@@ -1,6 +1,5 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<nav>
-	<view name="alerts" default="true"/>
+<nav search_view="search">
+	<view name="alerts" default="true" label="Alerts"/>
 	<view name="dashboards"/>
 	<view name="search"/>
 	<view name="getting_started"/>

@@ -55,6 +55,12 @@ class UpdateAlertsCommand(StreamingCommand):
         **Description:** Optional notes to be added to the work log''',
         require=False)
 
+    notes_field = Option(
+        doc='''
+        **Syntax:** **notes_field=***<field>*
+        **Description:** Value of the field will be used as notes to be added to the work log, takes precedence over the notes option''',
+        require=False, validate=validators.Fieldname())
+
     alerts = None
 
     def stream(self, records):
@@ -71,7 +77,12 @@ class UpdateAlertsCommand(StreamingCommand):
                     sid=self._metadata.searchinfo.sid,
                     username=self._metadata.searchinfo.username)
             elif self.action and self.status and self.key and self.key in record:
-                self.alerts.update(record[self.key], action=self.action, status=self.status, notes=self.notes,
+                notes = None
+                if self.notes:
+                    notes = self.notes
+                if self.notes_field and self.notes_field in record and record[self.notes_field]:
+                    notes = record[self.notes_field]
+                self.alerts.update(record[self.key], action=self.action, status=self.status, notes=notes,
                     logger=self.logger,
                     sid=self._metadata.searchinfo.sid,
                     username=self._metadata.searchinfo.username)
