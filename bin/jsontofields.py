@@ -49,9 +49,9 @@ class JsonToFieldsCommand(StreamingCommand):
                     prefix = self.prefix 
                 else:
                     prefix = ""
-                for key, value in json_obj.iteritems():
+                for key, value in json_obj.items():
                     if (not self.fieldnames) or (key in self.fieldnames):
-                        if isinstance(value, basestring):
+                        if isinstance(value, str):
                             if self.typeprefix:
                                 tp = "s_"
                             else:
