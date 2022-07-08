@@ -25,7 +25,7 @@ from alert_collection import AlertCollection
 
 
 # Note that distibuted parameter below is flipped True means: it will only run on the search head.
-@Configuration(type='streaming', distributed=True, streaming=True)
+@Configuration(type='streaming', distributed=False, streaming=True)
 class ListAlertsCommand(GeneratingCommand):
 
     data = Option(
