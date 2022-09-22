@@ -41,68 +41,6 @@
     </div>
     </div>
 
-    <h2>Whitelisting</h2>
-    <a name="whitelisting"></a>
-    <div class="row">
-    <div class="span12">
-      <p>Temporary whitelisting of alerts can be configured using the <a href="search?q=%7C%20inputlookup%20whitelist" target="_blank">
-      whitelist</a> lookup table.</p>
-      <p>For this to be practical, you should install the <a href="https://apps.splunk.com/apps/id/lookup_editor">
-      Lookup Editor</a> app to easily update the content of that lookup table.</p>
-      <p>Each row in the lookup table defines a whitelisting rule which applies based on the type of alerts when the
-      current date is between start and end and when the criteria matches. The fields are as follow:</p>
-      <table class="table-condensed table-bordered" >
-      <thead>
-      <tr>
-      <th>name</th>
-      <th>type</th>
-      <th>description</th>
-      <th>start</th>
-      <th>end</th>
-      <th>criteria</th>
-      <th>reason</th>
-      <th>stakeholder</th>
-      </tr>
-      </thead>
-      <tbody>
-      <tr>
-      <td>the name of the rule, used in the logs to gather stats on how many times the rule has applied</td>
-      <td>the type of the alert the rule will be applied to</td>
-      <td>informational</td>
-      <td>current date should be past this date or rule will be ignored, YYYY-MM-DD format</td>
-      <td>current date should be before this date or rule will be ignored, YYYY-MM-DD format</td>
-      <td>a boolean expression that uses a python-like syntax such as <tt>user == "admin"</tt> to test whether the
-      record should be whitelisted - see below for syntax</td>
-      <td>informational</td>
-      <td>informational</td>
-      </tr>
-      </tbody>
-      </table>
-    </div>
-    </div>
-    <div class="row">
-    <div class="span12">
-      <p>Example of supported syntax for the criteria column:</p>
-      <ul>
-      <li><code>user == "value"</code> - applies if the <em>user</em> field is equal to "value"</li>
-      <li><code>get("user") == "value"</code> - applies if the <em>user</em> field is equal to "value"; the <tt>get</tt> function allows
-      to retrieve the field value if it contains special characters or spaces</li>
-      <li><code>count &gt;= 10</code> - applies if the <em>count</em> field is greater or equal to 10; other operator supported
-      are <tt>&gt;</tt>,  <tt>&lt;=</tt>, <tt>&lt;</tt>, and <tt>!=</tt></li>
-      <li><code>match("service_.*", user)</code> - applies if the <em>user</em> field matches the regular expression "service_.*"</li>
-      <li><code>search("service_.*", user)</code> - applies if the <em>user</em> field contains the regular expression "service_.*";
-      <tt>match</tt> and <tt>search</tt> delegates to the python <tt>re.match</tt> and <tt>re.search</tt> implementation</li>
-      <li><code>cidrmatch("192.168.1.0/24", clientip)</code> - applies if the <em>clientip</em> field matches the CIDR "192.168.1.0/24"</li>
-      <li><code>set(servers) &lt;= set(["server1", "server2"])</code> - applies if the multi-value servers field set is included in the server1 and server2 set; the meaning of the operators on set are the same as the python set operators but only <tt>&gt;=</tt>, <tt>&gt;</tt>, <tt>&lt;=</tt>, <tt>&lt;</tt>, and <tt>!=</tt> are supported</li>
-      <li><code>(user == "value" or user == "other") and count &gt; 10</code> - expressions can be combined using <tt>and</tt> and
-      <tt>or</tt> boolean operators and parenthesis</li>
-      </ul>
-      <p>Note that when comparing number literals, the value of the field will be converted to a number first.</p>
-      <p>String literals can be enclosed in quotes or double quotes (e.g. <tt>"foo"</tt>, <tt>'bar'</tt>) and raw string can be used to 
-      make regular expressions easier to write (e.g. <tt>r"\d+"</tt> or <tt>r'\s*'</tt>)</p>
-    </div>
-    </div>
-
     <h2>Canned Queries</h2>
     <a name="canned_queries"></a>
     <div class="row">

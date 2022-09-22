@@ -39,7 +39,7 @@ access = read : [ * ], write : [ admin, power, user ]
 export = system
 owner = admin
 
-[html/alerts]
+[views/alerts]
 owner = admin
 
 [views/reports]
