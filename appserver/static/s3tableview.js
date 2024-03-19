@@ -164,12 +164,14 @@ define([
         createView: function() {
             return this;
         },
-
+        escapeDoubleQuotes: function(text) {
+            return text.replace(/"/g, '\\"');
+        },
         onFilterChange: function() {
-            var status = 'status="' + this.filter.get("status").join(",") + '"';
-            var type = 'type="' + this.filter.get("type").join(",") + '"';
-            var analyst = 'analyst="' + this.filter.get("analyst").join(",") + '"';
-            var severity = 'severity="' + this.filter.get("severity").join(",") + '"';
+            var status = 'status="' + this.escapeDoubleQuotes(this.filter.get("status").join(",")) + '"';
+            var type = 'type="' + this.escapeDoubleQuotes(this.filter.get("type").join(",")) + '"';
+            var analyst = 'analyst="' + this.escapeDoubleQuotes(this.filter.get("analyst").join(",")) + '"';
+            var severity = 'severity="' + this.escapeDoubleQuotes(this.filter.get("severity").join(",")) + '"';
             var searchQuery = "| listalerts json=data "
                 + status + " "
                 + analyst + " "

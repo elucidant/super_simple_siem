@@ -58,21 +58,21 @@ require([
             // Copy the contents of the defaultTokenModel to the URL query params
             const tokens = defaultTokenModel.toJSON();
             if (window.history.pushState) {
-				// Construct URLSearchParams object instance from current URL querystring.
-				var queryParams = new URLSearchParams([]);
-				for (const [k, v] of Object.entries(tokens)) {
-					if (k.startsWith("form.")) {
+                // Construct query parameters to save state of dropdown
+                const params = [];
+                for (const [k, v] of Object.entries(tokens)) {
+                    if (k.startsWith("form.")) {
                         if (Array.isArray(v)) {
-                            queryParams.delete(v);
                             for (const e of v) {
-                                queryParams.append(k, e);
+                                params.push(`${k}=${encodeURIComponent(e)}`);
                             }
                         } else {
-                            queryParams.set(k, v);
+                            params.push(`${k}=${encodeURIComponent(v)}`);
                         }
                     }
-				}
-				window.history.pushState(null, null, "?"+queryParams.toString());
+                }
+                queryParams = params.join("&");
+                window.history.pushState(null, null, "?"+queryParams);
             }
         }
 
