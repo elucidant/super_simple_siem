@@ -1,0 +1,21 @@
+Copyright 2016-2025 Jean-Laurent Huynh
+
+This application bundles DataTables 1.10.13 which is available under the MIT
+license. For details see https://datatables.net/license/.
+
+This application bundles portion of the Splunk SDK for Python available under
+the Apache License Version 2.0.
+
+This application depends on packages from splunkui.splunk.com, and inherited
+dependencies, refer to the licenses for
+
+* react 16.x
+* @splunk/react-page 7.x
+* @splunk/react-time-range 9.x
+* @splunk/react-ui 4.x
+* @splunk/search-job 3.x
+* @splunk/splunk-moment 0.6.x
+* @splunk/splunk-utils 2.x
+* @splunk/themes 0.21.x
+* @splunk/ui-utils 1.x
+

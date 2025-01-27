@@ -1,0 +1,8 @@
+<nav search_view="search">
+	<view name="alerts" default="true" label="Alerts"/>
+	<view name="alerts_old" label="Alerts (Old)"/>
+	<view name="dashboards"/>
+	<view name="search"/>
+	<view name="getting_started"/>
+	<view name="documentation"/>
+</nav>
