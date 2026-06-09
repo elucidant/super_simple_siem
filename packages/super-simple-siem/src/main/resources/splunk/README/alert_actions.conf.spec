@@ -6,3 +6,6 @@ param.time = <string>
 param.max_count = <int>
 * default max count of events to create for a single alert
 
+python.version = <string>
+
+python.required = <string>
